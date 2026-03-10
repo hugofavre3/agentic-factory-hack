@@ -1,0 +1,41 @@
+{
+  "productCode": "BOGIE_Y32",
+  "operations": [
+    {
+      "operationId": "OP10_FRAME_PREP",
+      "sequence": 10,
+      "description": "Préparation et contrôle châssis",
+      "requiredComponents": ["BOGIE_FRAME_Y32"]
+    },
+    {
+      "operationId": "OP20_WHEELSET_MOUNT",
+      "sequence": 20,
+      "description": "Montage essieux et boîtes d'essieu",
+      "requiredComponents": ["WHEELSET_920MM", "AXLE_BOX"]
+    },
+    {
+      "operationId": "OP30_SUSPENSION",
+      "sequence": 30,
+      "description": "Installation suspension primaire",
+      "requiredComponents": ["SUSPENSION_SPRING"]
+    },
+    {
+      "operationId": "OP40_BRAKE_ASSEMBLY",
+      "sequence": 40,
+      "description": "Montage freins",
+      "requiredComponents": ["BRAKE_DISC"]
+    },
+    {
+      "operationId": "OP50_TRACTION_MOTOR",
+      "sequence": 50,
+      "description": "Installation moteur de traction",
+      "requiredComponents": ["TRACTION_MOTOR_TM"]
+    },
+    {
+      "operationId": "OP60_TESTING",
+      "sequence": 60,
+      "description": "Tests et contrôle qualité final",
+      "requiredComponents": []
+    }
+  ]
+}

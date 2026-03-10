@@ -1,0 +1,29 @@
+{
+  "of_id": "of-2026-00123",
+  "orderNumber": "OF-2026-00123",
+  "productCode": "BOGIE_Y32",
+  "quantity": 4,
+  "decision": "PARTIAL_RELEASE",
+  "previous_status": "Created",
+  "timestamp": "2026-03-10T15:08:15.385317+00:00",
+  "new_status": "PartiallyReleased",
+  "missing_components": [
+    {
+      "itemCode": "BRAKE_DISC",
+      "description": "Disque de frein",
+      "qtyNeeded": 16,
+      "qtyAvailable": 0,
+      "qtyShortage": 16
+    }
+  ],
+  "cutoff_operation": {
+    "operationId": "OP40_BRAKE_ASSEMBLY",
+    "sequence": 40,
+    "description": "Montage freins"
+  },
+  "resume_from_operation": {
+    "operationId": "OP40_BRAKE_ASSEMBLY",
+    "sequence": 40
+  },
+  "instruction": "Produire jusqu'à OP30_SUSPENSION (séq. 30) inclus, puis mettre de côté en attente de : BRAKE_DISC (manque 16)"
+}
