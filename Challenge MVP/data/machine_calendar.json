@@ -1,0 +1,80 @@
+{
+  "description": "Calendrier charge machine et créneaux disponibles — ligne bogie Y32",
+  "line": "LIGNE_BOGIE_Y32",
+  "slots": [
+    {
+      "slotId": "SLOT-2026-03-11-AM",
+      "date": "2026-03-11",
+      "shift": "Matin (06h–14h)",
+      "startTime": "2026-03-11T06:00:00Z",
+      "endTime": "2026-03-11T14:00:00Z",
+      "availableHours": 8,
+      "currentLoad": 0.3,
+      "status": "available",
+      "notes": "Créneau peu chargé, idéal pour démarrage partiel"
+    },
+    {
+      "slotId": "SLOT-2026-03-11-PM",
+      "date": "2026-03-11",
+      "shift": "Après-midi (14h–22h)",
+      "startTime": "2026-03-11T14:00:00Z",
+      "endTime": "2026-03-11T22:00:00Z",
+      "availableHours": 8,
+      "currentLoad": 0.75,
+      "status": "available",
+      "notes": "Charge élevée, OF prioritaire BOGIE_Y32 déjà planifié"
+    },
+    {
+      "slotId": "SLOT-2026-03-12-AM",
+      "date": "2026-03-12",
+      "shift": "Matin (06h–14h)",
+      "startTime": "2026-03-12T06:00:00Z",
+      "endTime": "2026-03-12T14:00:00Z",
+      "availableHours": 8,
+      "currentLoad": 0.5,
+      "status": "available",
+      "notes": ""
+    },
+    {
+      "slotId": "SLOT-2026-03-12-PM",
+      "date": "2026-03-12",
+      "shift": "Après-midi (14h–22h)",
+      "startTime": "2026-03-12T14:00:00Z",
+      "endTime": "2026-03-12T22:00:00Z",
+      "availableHours": 0,
+      "currentLoad": 1.0,
+      "status": "maintenance",
+      "notes": "Maintenance préventive ligne bogie"
+    },
+    {
+      "slotId": "SLOT-2026-03-13-AM",
+      "date": "2026-03-13",
+      "shift": "Matin (06h–14h)",
+      "startTime": "2026-03-13T06:00:00Z",
+      "endTime": "2026-03-13T14:00:00Z",
+      "availableHours": 8,
+      "currentLoad": 0.2,
+      "status": "available",
+      "notes": "Créneau très dégagé"
+    },
+    {
+      "slotId": "SLOT-2026-03-13-PM",
+      "date": "2026-03-13",
+      "shift": "Après-midi (14h–22h)",
+      "startTime": "2026-03-13T14:00:00Z",
+      "endTime": "2026-03-13T22:00:00Z",
+      "availableHours": 8,
+      "currentLoad": 0.4,
+      "status": "available",
+      "notes": ""
+    }
+  ],
+  "unavailabilities": [
+    {
+      "date": "2026-03-12",
+      "shift": "Après-midi",
+      "reason": "Maintenance préventive ligne bogie",
+      "type": "planned_maintenance"
+    }
+  ]
+}

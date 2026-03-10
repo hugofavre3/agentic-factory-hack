@@ -1,0 +1,41 @@
+{
+  "description": "Prévisions de besoin composants pour les OF à venir (horizon 30 jours)",
+  "horizon": "2026-03-10 to 2026-04-10",
+  "forecasts": [
+    {
+      "itemCode": "BRAKE_DISC",
+      "upcomingOFs": [
+        { "of_id": "of-2026-00123", "qtyNeeded": 16, "dueDate": "2026-03-25" },
+        { "of_id": "of-2026-00140", "qtyNeeded": 8,  "dueDate": "2026-04-05" }
+      ],
+      "totalForecastQty": 24,
+      "currentStock": 0,
+      "inTransitQty": 16,
+      "expectedShortage": 8,
+      "riskLevel": "HIGH"
+    },
+    {
+      "itemCode": "TRACTION_MOTOR_TM",
+      "upcomingOFs": [
+        { "of_id": "of-2026-00123", "qtyNeeded": 8, "dueDate": "2026-03-25" },
+        { "of_id": "of-2026-00145", "qtyNeeded": 6, "dueDate": "2026-04-10" }
+      ],
+      "totalForecastQty": 14,
+      "currentStock": 9,
+      "inTransitQty": 0,
+      "expectedShortage": 5,
+      "riskLevel": "MEDIUM"
+    },
+    {
+      "itemCode": "WHEELSET_920MM",
+      "upcomingOFs": [
+        { "of_id": "of-2026-00123", "qtyNeeded": 8, "dueDate": "2026-03-25" }
+      ],
+      "totalForecastQty": 8,
+      "currentStock": 10,
+      "inTransitQty": 0,
+      "expectedShortage": 0,
+      "riskLevel": "LOW"
+    }
+  ]
+}

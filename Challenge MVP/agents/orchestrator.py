@@ -51,12 +51,13 @@ def scan_agent1_outputs(data_dir: str) -> List[Dict]:
 
 
 def build_orders_partially_released(entries: List[Dict]) -> Dict:
-    """Filtre les entrées PartiallyReleased et construit la liste pour Agent 2."""
-    partial = [e for e in entries if e["status"] == "PartiallyReleased"]
+    """Filtre les entrées PartiallyReleased/Delayed et construit la liste pour Agent 2."""
+    # L'Agent 1 IA peut produire le statut "Delayed" en plus de "PartiallyReleased"
+    watchable = [e for e in entries if e["status"] in ("PartiallyReleased", "Delayed")]
     return {
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "total_agent1_outputs": len(entries),
-        "partially_released_count": len(partial),
+        "partially_released_count": len(watchable),
         "orders": [
             {
                 "of_id": e["of_id"],
@@ -64,7 +65,7 @@ def build_orders_partially_released(entries: List[Dict]) -> Dict:
                 "productCode": e["productCode"],
                 "agent1_output_file": e["agent1_output_file"],
             }
-            for e in partial
+            for e in watchable
         ],
     }
 

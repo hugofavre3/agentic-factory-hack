@@ -1,0 +1,78 @@
+{
+  "description": "Historique commandes / livraisons des composants (délais réels, backorders)",
+  "orders": [
+    {
+      "orderId": "PO-2025-0041",
+      "itemCode": "BRAKE_DISC",
+      "supplierId": "SUP-KNORR",
+      "orderDate": "2025-08-01",
+      "expectedDeliveryDate": "2025-08-06",
+      "actualDeliveryDate": "2025-08-06",
+      "orderedQty": 16,
+      "deliveredQty": 16,
+      "daysLate": 0,
+      "status": "delivered"
+    },
+    {
+      "orderId": "PO-2025-0078",
+      "itemCode": "BRAKE_DISC",
+      "supplierId": "SUP-KNORR",
+      "orderDate": "2025-11-05",
+      "expectedDeliveryDate": "2025-11-10",
+      "actualDeliveryDate": "2025-11-12",
+      "orderedQty": 24,
+      "deliveredQty": 24,
+      "daysLate": 2,
+      "status": "delivered"
+    },
+    {
+      "orderId": "PO-2026-0012",
+      "itemCode": "BRAKE_DISC",
+      "supplierId": "SUP-FAIVELEY",
+      "orderDate": "2026-01-28",
+      "expectedDeliveryDate": "2026-01-31",
+      "actualDeliveryDate": "2026-01-31",
+      "orderedQty": 20,
+      "deliveredQty": 20,
+      "daysLate": 0,
+      "status": "delivered"
+    },
+    {
+      "orderId": "PO-2026-0023",
+      "itemCode": "BRAKE_DISC",
+      "supplierId": "SUP-KNORR",
+      "orderDate": "2026-03-05",
+      "expectedDeliveryDate": "2026-03-10",
+      "actualDeliveryDate": null,
+      "orderedQty": 16,
+      "deliveredQty": 0,
+      "daysLate": null,
+      "status": "in_transit",
+      "notes": "Commande en cours, expédition confirmée par Knorr-Bremse"
+    },
+    {
+      "orderId": "PO-2025-0055",
+      "itemCode": "TRACTION_MOTOR_TM",
+      "supplierId": "SUP-ALSTOM-INT",
+      "orderDate": "2025-08-20",
+      "expectedDeliveryDate": "2025-08-30",
+      "actualDeliveryDate": "2025-08-31",
+      "orderedQty": 8,
+      "deliveredQty": 8,
+      "daysLate": 1,
+      "status": "delivered"
+    },
+    {
+      "orderId": "PO-2025-0099",
+      "itemCode": "TRACTION_MOTOR_TM",
+      "supplierId": "SUP-ALSTOM-INT",
+      "orderDate": "2025-12-10",
+      "expectedDeliveryDate": "2025-12-20",
+      "actualDeliveryDate": "2025-12-24",
+      "orderedQty": 12,
+      "deliveredQty": 12,
+      "daysLate": 4,
+      "status": "delivered"
+    }
+  ]
+}

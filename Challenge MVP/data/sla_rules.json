@@ -1,0 +1,23 @@
+{
+  "description": "Règles SLA : pénalités de retard et niveaux de service par client/produit",
+  "rules": [
+    {
+      "productCode": "BOGIE_Y32",
+      "client": "SNCF_TGV",
+      "serviceLevelAgreement": "Premium",
+      "maxAcceptableDelay_days": 2,
+      "penaltyPerDayLate_eur": 5000,
+      "escalationThreshold_days": 5,
+      "notes": "Contrat TGV — pénalités contractuelles lourdes au-delà de 2 jours"
+    },
+    {
+      "productCode": "BOGIE_Y32",
+      "client": "DEFAULT",
+      "serviceLevelAgreement": "Standard",
+      "maxAcceptableDelay_days": 5,
+      "penaltyPerDayLate_eur": 1500,
+      "escalationThreshold_days": 10,
+      "notes": "Conditions standard pour commandes non-TGV"
+    }
+  ]
+}

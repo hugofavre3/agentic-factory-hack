@@ -1,0 +1,62 @@
+{
+  "description": "Fournisseurs par composant : lead time, fiabilité, prix, historique",
+  "suppliers": [
+    {
+      "supplierId": "SUP-KNORR",
+      "name": "Knorr-Bremse",
+      "components": ["BRAKE_DISC"],
+      "leadTime_days": 5,
+      "reliability": 0.85,
+      "unitPrice_eur": 320,
+      "minOrderQty": 8,
+      "historicalDeliveries": [
+        { "date": "2025-11-10", "orderedQty": 24, "deliveredQty": 24, "daysLate": 2 },
+        { "date": "2025-08-05", "orderedQty": 16, "deliveredQty": 16, "daysLate": 0 },
+        { "date": "2026-01-15", "orderedQty": 16, "deliveredQty": 16, "daysLate": 3 }
+      ],
+      "contactEmail": "orders@knorr-bremse.com"
+    },
+    {
+      "supplierId": "SUP-FAIVELEY",
+      "name": "Faiveley Transport",
+      "components": ["BRAKE_DISC"],
+      "leadTime_days": 3,
+      "reliability": 0.95,
+      "unitPrice_eur": 380,
+      "minOrderQty": 4,
+      "historicalDeliveries": [
+        { "date": "2025-10-20", "orderedQty": 16, "deliveredQty": 16, "daysLate": 0 },
+        { "date": "2026-02-01", "orderedQty": 20, "deliveredQty": 20, "daysLate": 0 }
+      ],
+      "contactEmail": "supply@faiveley.com"
+    },
+    {
+      "supplierId": "SUP-ALSTOM-INT",
+      "name": "Alstom Internal Supply (moteurs)",
+      "components": ["TRACTION_MOTOR_TM"],
+      "leadTime_days": 10,
+      "reliability": 0.90,
+      "unitPrice_eur": 12000,
+      "minOrderQty": 1,
+      "historicalDeliveries": [
+        { "date": "2025-09-01", "orderedQty": 8, "deliveredQty": 8, "daysLate": 1 },
+        { "date": "2025-12-15", "orderedQty": 12, "deliveredQty": 12, "daysLate": 4 }
+      ],
+      "contactEmail": "internal-supply@alstom.com"
+    },
+    {
+      "supplierId": "SUP-GHH",
+      "name": "GHH-Bonatrans",
+      "components": ["WHEELSET_920MM"],
+      "leadTime_days": 14,
+      "reliability": 0.92,
+      "unitPrice_eur": 8500,
+      "minOrderQty": 2,
+      "historicalDeliveries": [
+        { "date": "2025-07-20", "orderedQty": 8, "deliveredQty": 8, "daysLate": 0 },
+        { "date": "2026-01-10", "orderedQty": 10, "deliveredQty": 10, "daysLate": 1 }
+      ],
+      "contactEmail": "logistics@ghh-bonatrans.com"
+    }
+  ]
+}

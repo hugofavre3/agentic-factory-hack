@@ -2,11 +2,11 @@
   "productCode": "BOGIE_Y32",
   "description": "Bogie Y32 - TGV",
   "components": [
-    { "itemCode": "BOGIE_FRAME_Y32",   "description": "Châssis bogie Y32 soudé",       "qtyPerUnit": 1 },
-    { "itemCode": "WHEELSET_920MM",     "description": "Essieu monté roue Ø920mm",      "qtyPerUnit": 2 },
-    { "itemCode": "AXLE_BOX",           "description": "Boîte d'essieu",                "qtyPerUnit": 4 },
-    { "itemCode": "SUSPENSION_SPRING",  "description": "Ressort de suspension primaire", "qtyPerUnit": 4 },
-    { "itemCode": "BRAKE_DISC",         "description": "Disque de frein",                "qtyPerUnit": 4 },
-    { "itemCode": "TRACTION_MOTOR_TM",  "description": "Moteur de traction",            "qtyPerUnit": 2 }
+    { "itemCode": "BOGIE_FRAME_Y32",   "description": "Châssis bogie Y32 soudé",       "qtyPerUnit": 1, "isCritical": true  },
+    { "itemCode": "WHEELSET_920MM",     "description": "Essieu monté roue Ø920mm",      "qtyPerUnit": 2, "isCritical": true  },
+    { "itemCode": "AXLE_BOX",           "description": "Boîte d'essieu",                "qtyPerUnit": 4, "isCritical": false },
+    { "itemCode": "SUSPENSION_SPRING",  "description": "Ressort de suspension primaire", "qtyPerUnit": 4, "isCritical": false },
+    { "itemCode": "BRAKE_DISC",         "description": "Disque de frein",                "qtyPerUnit": 4, "isCritical": true  },
+    { "itemCode": "TRACTION_MOTOR_TM",  "description": "Moteur de traction",            "qtyPerUnit": 2, "isCritical": true  }
   ]
 }

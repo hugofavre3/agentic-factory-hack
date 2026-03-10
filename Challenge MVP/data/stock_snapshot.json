@@ -1,11 +1,29 @@
-{
-  "timestamp": "2026-03-10T08:00:00Z",
-  "items": [
-    { "itemCode": "BOGIE_FRAME_Y32",   "qtyAvailable": 6  },
-    { "itemCode": "WHEELSET_920MM",     "qtyAvailable": 10 },
-    { "itemCode": "AXLE_BOX",           "qtyAvailable": 20 },
-    { "itemCode": "SUSPENSION_SPRING",  "qtyAvailable": 18 },
-    { "itemCode": "BRAKE_DISC",         "qtyAvailable": 0  },
-    { "itemCode": "TRACTION_MOTOR_TM",  "qtyAvailable": 9  }
-  ]
+﻿{
+    "timestamp":  "2026-03-10T08:00:00Z",
+    "items":  [
+                  {
+                      "itemCode":  "BOGIE_FRAME_Y32",
+                      "qtyAvailable":  6
+                  },
+                  {
+                      "itemCode":  "WHEELSET_920MM",
+                      "qtyAvailable":  10
+                  },
+                  {
+                      "itemCode":  "AXLE_BOX",
+                      "qtyAvailable":  20
+                  },
+                  {
+                      "itemCode":  "SUSPENSION_SPRING",
+                      "qtyAvailable":  18
+                  },
+                  {
+                      "itemCode":  "BRAKE_DISC",
+                      "qtyAvailable":  20
+                  },
+                  {
+                      "itemCode":  "TRACTION_MOTOR_TM",
+                      "qtyAvailable":  9
+                  }
+              ]
 }

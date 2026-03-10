@@ -5,7 +5,41 @@
   "quantity": 4,
   "decision": "PARTIAL_RELEASE",
   "previous_status": "Created",
-  "timestamp": "2026-03-10T15:08:15.385317+00:00",
+  "timestamp": "2026-03-10T17:24:33.083384+00:00",
+  "ai_enhanced": true,
+  "global_risk_score": 62,
+  "risk_level": "MEDIUM",
+  "risk_factors": [
+    {
+      "factor": "Composants critiques manquants",
+      "score": 80,
+      "detail": "BRAKE_DISC est critique, totalement absent du stock ; dépendance forte à la livraison, risque SLA élevé."
+    },
+    {
+      "factor": "Historique de retard similaire",
+      "score": 60,
+      "detail": "Les OF similaires avec BRAKE_DISC manquant ont subi 3 à 4 jours de retard."
+    },
+    {
+      "factor": "SLA client Premium",
+      "score": 70,
+      "detail": "Tolérance de max 2 jours de retard chez SNCF_TGV, forte pénalité au-delà."
+    },
+    {
+      "factor": "Créneau machine",
+      "score": 20,
+      "detail": "Plusieurs créneaux à faible charge débutant suffisamment en avance ; pas de risque machine actuellement."
+    },
+    {
+      "factor": "Autres composants",
+      "score": 10,
+      "detail": "Tous les autres composants sont disponibles dans les quantités requises."
+    }
+  ],
+  "recommended_start_slot": "SLOT-2026-03-11-AM",
+  "estimated_production_days": 2,
+  "sla_impact": "En commençant immédiatement, l'OF avance jusqu'à OP30 en environ 2 jours ; bloque ensuite pour attente des BRAKE_DISC. Si le réappro arrive sous 2 jours, l'assemblage final reste dans le SLA, sinon pénalités 5000€/jour possibles.",
+  "ai_reasoning": "La production peut être partiellement lancée jusqu'à l'opération OP30_SUSPENSION, car tous les composants nécessaires jusqu'à cette étape sont disponibles. Le composant BRAKE_DISC, critique et manquant, bloque l'étape OP40_BRAKE_ASSEMBLY, empêchant l'assemblage complet. L'historique montre que ce scénario entraîne généralement un retard de 3 à 4 jours, limité à l'attente de ce composant. Le risque SLA est important, car le client SNCF_TGV tolère un retard max de 2 jours avec de fortes pénalités. Toutefois, avancer les opérations disponibles permet une meilleure flexibilité une fois les disques reçus. Le créneau machine SLOT-2026-03-11-AM est recommandé : faible charge, démarre tôt pour maximiser la valeur ajoutée avant possible retard. Prévoir, néanmoins, la coordination logistique pour accélérer la livraison des BRAKE_DISC afin de limiter les impacts négatifs sur le respect du délai contractuel.",
   "new_status": "PartiallyReleased",
   "missing_components": [
     {
@@ -13,7 +47,8 @@
       "description": "Disque de frein",
       "qtyNeeded": 16,
       "qtyAvailable": 0,
-      "qtyShortage": 16
+      "qtyShortage": 16,
+      "isCritical": true
     }
   ],
   "cutoff_operation": {
