@@ -22,10 +22,22 @@ fi
 
 echo "🚀 Starting data seeding..."
 
+# Resolve Python executable across Linux/macOS/Windows Git Bash.
+if command -v python3 >/dev/null 2>&1; then
+    PYTHON_CMD="python3"
+elif command -v python >/dev/null 2>&1; then
+    PYTHON_CMD="python"
+else
+    echo "❌ Python is not installed or not available on PATH."
+    exit 1
+fi
+
 # Install required Python packages
 echo "📦 Installing required Python packages..."
-pip3 install azure-cosmos --quiet
-pip3 install azure-storage-blob --quiet
+"$PYTHON_CMD" -m pip install azure-cosmos --quiet
+"$PYTHON_CMD" -m pip install azure-storage-blob --quiet
+# Helps Python trust Windows enterprise/root CAs when running under Git Bash.
+"$PYTHON_CMD" -m pip install python-certifi-win32 --quiet || true
 
 # Create Python script to handle the data import
 cat > seed_data.py << 'EOF'
@@ -155,7 +167,7 @@ EOF
 
 # Run the Python script
 echo "🐍 Running data seeding script..."
-python3 seed_data.py
+"$PYTHON_CMD" seed_data.py
 
 # Clean up
 rm seed_data.py
@@ -232,7 +244,7 @@ if __name__ == '__main__':
 EOF
 
 echo "🐍 Running kb-wiki upload script..."
-python3 seed_blob_wiki.py
+"$PYTHON_CMD" seed_blob_wiki.py
 
 # Clean up uploader script
 rm seed_blob_wiki.py
@@ -271,7 +283,8 @@ if [ ${#missing_vars[@]} -ne 0 ]; then
 fi
 
 echo "📦 Installing required Python packages for APIM..."
-pip3 install azure-identity azure-mgmt-apimanagement==4.0.0 --quiet
+"$PYTHON_CMD" -m pip install azure-identity azure-mgmt-apimanagement==4.0.0 --quiet
+"$PYTHON_CMD" -m pip install python-certifi-win32 --quiet || true
 
 echo "📝 Generating APIM setup script (Cosmos via Managed Identity)..."
 cat > seed_apim_cosmos_mi.py << 'EOF'
@@ -581,7 +594,7 @@ print("✅ APIM Maintenance API deployed: path=/maintenance (Cosmos via Managed 
 EOF
 
 echo "🐍 Running APIM setup (Managed Identity to Cosmos)..."
-python3 seed_apim_cosmos_mi.py
+"$PYTHON_CMD" seed_apim_cosmos_mi.py
 
 echo "🧹 Cleaning up APIM seeding script..."
 rm -f seed_apim_cosmos_mi.py
