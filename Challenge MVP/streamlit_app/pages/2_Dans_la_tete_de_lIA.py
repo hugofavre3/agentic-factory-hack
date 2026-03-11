@@ -82,11 +82,15 @@ with tab1:
 
         # ── Résumé décision ──────────────────────────────────
         st.markdown("---")
-        st.markdown("#### Décision proposée")
+        op_dec = output.get("operator_decision")
+        if op_dec:
+            st.markdown("#### Décision validée par l'opérateur")
+        else:
+            st.markdown("#### Recommandation de l'IA (en attente de validation)")
 
         c1, c2, c3 = st.columns(3)
 
-        decision = output["decision"]
+        decision = output.get("operator_decision") or output.get("recommended_decision", "?")
         risk = output["risk_level"]
         score = output["global_risk_score"]
 
@@ -109,7 +113,7 @@ with tab1:
         else:
             st.error(f"{label} — {desc}")
 
-        st.markdown(f"**Consigne atelier** : {output['instruction']}")
+        st.markdown(f"**Consigne atelier** : {output.get('instruction', '⏳ En attente de décision opérateur')}")
 
         # ── Explication IA ──────────────────────────────────────
         if output.get("ai_reasoning"):

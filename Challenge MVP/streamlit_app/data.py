@@ -163,32 +163,79 @@ def _find_last_doable(operations, cutoff_op):
 
 
 # Outputs IA simulés par scénario
+# L'IA recommande un scénario ; la décision finale est prise par l'opérateur.
 _SIMULATED_AI_AGENT1 = {
     "OK": {
-        "decision": "FULL_RELEASE",
+        "recommended_decision": "FULL_RELEASE",
         "global_risk_score": 12,
         "risk_level": "LOW",
         "recommended_start_slot": "SLOT-2026-03-12-AM",
         "estimated_production_days": 3,
+        # ── Risque retard ──
+        "delay_probability_pct": 2,
+        "estimated_late_days": 0,
+        "estimated_penalty_eur": 0,
+        "delay_risk_summary": "Marge confortable de ~27 jours. Aucun risque de retard.",
         "sla_impact": "Aucun risque SLA — livraison bien avant l'échéance.",
         "reasoning": (
             "Tous les composants sont disponibles en quantité suffisante. "
             "L'historique ne montre aucun blocage récent sur ce type d'OF. "
-            "Le créneau du 12/03 matin est peu chargé (30%). "
+            "Le créneau du 12/03 matin est peu chargé (30 %). "
             "Recommandation : lancer la production complète immédiatement."
         ),
         "risk_factors": [
             {"factor": "Stock", "score": 5, "detail": "Tous composants disponibles"},
             {"factor": "Historique", "score": 10, "detail": "Aucun retard récent"},
+            {"factor": "Échéance", "score": 5, "detail": "30 jours de marge"},
             {"factor": "Planning", "score": 15, "detail": "Créneaux dégagés"},
+        ],
+        "alternative_scenarios": [
+            {
+                "choice": "FULL_RELEASE",
+                "label": "✅ Lancement complet",
+                "feasible": True,
+                "estimated_completion": "2026-03-14",
+                "margin_days": 27,
+                "delay_risk_pct": 2,
+                "penalty_eur": 0,
+                "comment": "Stock complet. Production 3 j, livraison 14/03 avec 27 j de marge.",
+            },
+            {
+                "choice": "PARTIAL_RELEASE",
+                "label": "⚠️ Lancement partiel",
+                "feasible": False,
+                "estimated_completion": None,
+                "margin_days": None,
+                "delay_risk_pct": None,
+                "penalty_eur": None,
+                "comment": "Non pertinent — aucun composant manquant.",
+            },
+            {
+                "choice": "DELAYED_RELEASE",
+                "label": "🛑 Report",
+                "feasible": True,
+                "estimated_completion": None,
+                "margin_days": 30,
+                "delay_risk_pct": 5,
+                "penalty_eur": 0,
+                "comment": "Possible mais gaspille la marge sans raison.",
+            },
         ],
     },
     "Moyen": {
-        "decision": "PARTIAL_RELEASE",
+        "recommended_decision": "PARTIAL_RELEASE",
         "global_risk_score": 62,
         "risk_level": "MEDIUM",
         "recommended_start_slot": "SLOT-2026-03-11-AM",
         "estimated_production_days": 2,
+        # ── Risque retard ──
+        "delay_probability_pct": 25,
+        "estimated_late_days": 0,
+        "estimated_penalty_eur": 0,
+        "delay_risk_summary": (
+            "14 jours avant échéance. Réappro BRAKE_DISC estimé à 3 j ; "
+            "le partiel préserve 7 j de marge. Au-delà de 3 j, pénalité 5 000 €/j."
+        ),
         "sla_impact": (
             "Si le réappro BRAKE_DISC arrive sous 3 jours, l'OF reste dans le SLA. "
             "Au-delà, pénalité de 5 000 €/jour (contrat SNCF_TGV Premium)."
@@ -196,71 +243,164 @@ _SIMULATED_AI_AGENT1 = {
         "reasoning": (
             "Le composant BRAKE_DISC (critique) est totalement absent du stock. "
             "La production peut avancer jusqu'à OP30_SUSPENSION inclus, ce qui couvre "
-            "~60% de la valeur ajoutée. L'historique montre 3 à 4 jours de retard sur "
+            "~60 % de la valeur ajoutée. L'historique montre 3 à 4 jours de retard sur "
             "des OF similaires bloqués par BRAKE_DISC. Le créneau SLOT-2026-03-11-AM "
-            "est à 30% de charge, idéal pour un démarrage partiel."
+            "est à 30 % de charge, idéal pour un démarrage partiel."
         ),
         "risk_factors": [
             {"factor": "Composants critiques manquants", "score": 80, "detail": "BRAKE_DISC totalement absent"},
-            {"factor": "Historique retards", "score": 60, "detail": "3-4j retard sur OF similaires"},
-            {"factor": "SLA SNCF_TGV", "score": 70, "detail": "Max 2j retard, 5000€/j pénalité"},
+            {"factor": "Historique retards", "score": 60, "detail": "3-4 j retard sur OF similaires"},
+            {"factor": "Échéance / SLA", "score": 70, "detail": "14 j restants — pénalité 5 000 €/j au-delà de +2 j"},
             {"factor": "Planning machine", "score": 20, "detail": "Créneaux disponibles"},
+        ],
+        "alternative_scenarios": [
+            {
+                "choice": "FULL_RELEASE",
+                "label": "✅ Lancement complet",
+                "feasible": False,
+                "estimated_completion": None,
+                "margin_days": None,
+                "delay_risk_pct": None,
+                "penalty_eur": None,
+                "comment": "Impossible — BRAKE_DISC manquant bloque OP40+.",
+            },
+            {
+                "choice": "PARTIAL_RELEASE",
+                "label": "⚠️ Lancement partiel",
+                "feasible": True,
+                "estimated_completion": "2026-03-18",
+                "margin_days": 7,
+                "delay_risk_pct": 25,
+                "penalty_eur": 0,
+                "comment": (
+                    "Démarrer OP10→OP30 (2 j), attendre réappro BRAKE_DISC (~3 j), "
+                    "finir OP40→OP60 (~3 j). Total ~8 j, marge 7 j."
+                ),
+            },
+            {
+                "choice": "DELAYED_RELEASE",
+                "label": "🛑 Report",
+                "feasible": True,
+                "estimated_completion": "2026-03-19",
+                "margin_days": 6,
+                "delay_risk_pct": 35,
+                "penalty_eur": 0,
+                "comment": (
+                    "Attendre BRAKE_DISC (~3-4 j) puis lancement complet (5 j). "
+                    "Total ~8-9 j, marge réduite à 6 j."
+                ),
+            },
         ],
     },
     "Critique": {
-        "decision": "DELAYED_RELEASE",
+        "recommended_decision": "DELAYED_RELEASE",
         "global_risk_score": 88,
         "risk_level": "HIGH",
         "recommended_start_slot": None,
         "estimated_production_days": None,
+        # ── Risque retard ──
+        "delay_probability_pct": 95,
+        "estimated_late_days": 8,
+        "estimated_penalty_eur": 40000,
+        "delay_risk_summary": (
+            "9 jours avant échéance. Réappro le plus lent = 14 j (WHEELSET_920MM). "
+            "Retard quasi-certain de 8+ jours. Pénalités estimées : 40 000 €+."
+        ),
         "sla_impact": (
             "SLA déjà compromis — échéance 20/03, réappro estimé à 10+ jours. "
             "Pénalités probables : 5 000 €/jour × 8+ jours = 40 000 €+."
         ),
         "reasoning": (
             "3 composants critiques manquants (WHEELSET_920MM, BRAKE_DISC, TRACTION_MOTOR_TM). "
-            "Le lancement partiel n'apporterait que OP10 (préparation châssis), soit ~15% de valeur ajoutée. "
+            "Le lancement partiel n'apporterait que OP10 (préparation châssis), soit ~15 % de valeur ajoutée. "
             "L'historique montre 7 jours d'attente stock sur des scénarios comparables. "
             "Recommandation : différer l'OF et prioriser un OF concurrent moins bloqué."
         ),
         "risk_factors": [
             {"factor": "Composants critiques manquants", "score": 95, "detail": "3 pièces critiques absentes"},
-            {"factor": "Historique retards", "score": 85, "detail": "7j attente stock historique"},
-            {"factor": "SLA", "score": 90, "detail": "Échéance 20/03 intenable"},
-            {"factor": "Planning machine", "score": 30, "detail": "Mais inutile sans pièces"},
+            {"factor": "Historique retards", "score": 85, "detail": "7 j attente stock historique"},
+            {"factor": "Échéance / SLA", "score": 95, "detail": "9 j restants, réappro 14 j — retard certain"},
+            {"factor": "Planning machine", "score": 30, "detail": "Inutile sans pièces"},
+        ],
+        "alternative_scenarios": [
+            {
+                "choice": "FULL_RELEASE",
+                "label": "✅ Lancement complet",
+                "feasible": False,
+                "estimated_completion": None,
+                "margin_days": None,
+                "delay_risk_pct": None,
+                "penalty_eur": None,
+                "comment": "Impossible — 3 composants critiques manquants.",
+            },
+            {
+                "choice": "PARTIAL_RELEASE",
+                "label": "⚠️ Lancement partiel",
+                "feasible": True,
+                "estimated_completion": "2026-03-28",
+                "margin_days": -8,
+                "delay_risk_pct": 95,
+                "penalty_eur": 40000,
+                "comment": (
+                    "Seule OP10 faisable (~15 % valeur). Réappro 14 j. "
+                    "Retard 8+ j, pénalités ≈ 40 000 €."
+                ),
+            },
+            {
+                "choice": "DELAYED_RELEASE",
+                "label": "🛑 Report",
+                "feasible": True,
+                "estimated_completion": "2026-03-30",
+                "margin_days": -10,
+                "delay_risk_pct": 98,
+                "penalty_eur": 50000,
+                "comment": (
+                    "Attendre réappro complet (~14 j) puis production (5 j). "
+                    "Retard 10+ j. Pénalités ≈ 50 000 €+."
+                ),
+            },
         ],
     },
 }
 
 
 def run_agent1(of_id: str, orders: Dict) -> Dict:
-    """Simule l'Agent 1 sur un OF donné. Retourne l'output Agent 1."""
+    """Analyse IA de l'OF — retourne une *recommandation*.
+
+    La décision finale est prise par l'opérateur via apply_operator_decision().
+    """
     order = orders[of_id]
     scenario = order["scenario"]
     components = order["components"]
     quantity = order["quantity"]
     stock = order["stock"]
 
-    # --- Étapes déterministes (identiques au vrai agent) ---
+    # --- Étapes déterministes ---
     missing = _check_availability(components, quantity, stock)
     cutoff_op = _find_cutoff(ROUTING, missing)
     last_doable = _find_last_doable(ROUTING, cutoff_op)
 
-    # --- Décision IA simulée ---
+    # --- IA simulée ---
     ai = _SIMULATED_AI_AGENT1[scenario]
-    decision = ai["decision"]
 
-    # Construction de l'output (même schéma que le vrai agent)
-    now = datetime.now(timezone.utc).isoformat()
+    # Calcul du risque retard (jours avant échéance)
+    due_date = datetime.fromisoformat(order["dueDate"].replace("Z", "+00:00"))
+    now_dt = datetime.now(timezone.utc)
+    days_until_due = (due_date - now_dt).days
+
+    now = now_dt.isoformat()
     output = {
         "of_id": of_id,
         "orderNumber": order["orderNumber"],
         "productCode": order["productCode"],
         "quantity": quantity,
-        "decision": decision,
         "previous_status": order["status"],
         "timestamp": now,
         "ai_enhanced": True,
+        # Recommandation IA (pas de décision finale)
+        "recommended_decision": ai["recommended_decision"],
+        "operator_decision": None,   # renseigné par l'opérateur
+        # Scores
         "global_risk_score": ai["global_risk_score"],
         "risk_level": ai["risk_level"],
         "risk_factors": ai["risk_factors"],
@@ -268,52 +408,92 @@ def run_agent1(of_id: str, orders: Dict) -> Dict:
         "estimated_production_days": ai["estimated_production_days"],
         "sla_impact": ai["sla_impact"],
         "ai_reasoning": ai["reasoning"],
-    }
-
-    if decision == "FULL_RELEASE":
-        output["new_status"] = "Released"
-        output["missing_components"] = []
-        output["cutoff_operation"] = None
-        output["resume_from_operation"] = None
-        output["instruction"] = "Production normale — tous les composants sont disponibles."
-
-    elif decision == "PARTIAL_RELEASE":
-        output["new_status"] = "PartiallyReleased"
-        output["missing_components"] = missing
-        output["cutoff_operation"] = {
+        # Risque retard
+        "days_until_due": days_until_due,
+        "delay_probability_pct": ai["delay_probability_pct"],
+        "estimated_late_days": ai["estimated_late_days"],
+        "estimated_penalty_eur": ai["estimated_penalty_eur"],
+        "delay_risk_summary": ai["delay_risk_summary"],
+        # Scénarios alternatifs pour l'opérateur
+        "alternative_scenarios": ai["alternative_scenarios"],
+        # Composants (toujours renseignés)
+        "missing_components": missing,
+        "cutoff_operation": {
             "operationId": cutoff_op["operationId"],
             "sequence": cutoff_op["sequence"],
             "description": cutoff_op["description"],
-        } if cutoff_op else None
-        output["resume_from_operation"] = {
+        } if cutoff_op else None,
+        "resume_from_operation": {
             "operationId": cutoff_op["operationId"],
             "sequence": cutoff_op["sequence"],
-        } if cutoff_op else None
-        shortage_parts = ", ".join(
-            f"{mc['itemCode']} (manque {mc['qtyShortage']})" for mc in missing
-        )
-        last_op_label = last_doable["operationId"] if last_doable else "?"
-        output["instruction"] = (
-            f"Produire jusqu'à {last_op_label} inclus, "
-            f"puis mettre de côté en attente de : {shortage_parts}"
-        )
+        } if cutoff_op else None,
+    }
 
-    elif decision == "DELAYED_RELEASE":
-        output["new_status"] = "Delayed"
-        output["missing_components"] = missing
-        output["cutoff_operation"] = None
-        output["resume_from_operation"] = None
-        critical = [mc["itemCode"] for mc in missing if mc.get("isCritical")]
-        output["instruction"] = (
-            f"OF mis en attente — composants critiques manquants : {', '.join(critical)}. "
-            f"Risque SLA trop élevé pour un lancement partiel."
-        )
-
-    # Mettre à jour le statut de l'OF en mémoire
-    order["status"] = output["new_status"]
-    order["last_agent"] = "Agent 1"
+    # Status intermédiaire : en attente de décision opérateur
+    output["new_status"] = "AwaitingDecision"
+    order["status"] = "AwaitingDecision"
+    order["last_agent"] = "Agent 1 (analyse)"
 
     return output
+
+
+def apply_operator_decision(of_id: str, orders: Dict, agent1_outputs: Dict,
+                            decision: str) -> str:
+    """Applique la décision de l'opérateur sur un OF analysé par Agent 1.
+
+    Retourne l'instruction atelier générée.
+    """
+    order = orders[of_id]
+    output = agent1_outputs[of_id]
+
+    output["operator_decision"] = decision
+
+    # Correspondance décision → statut OF
+    status_map = {
+        "FULL_RELEASE": "Released",
+        "PARTIAL_RELEASE": "PartiallyReleased",
+        "DELAYED_RELEASE": "Delayed",
+    }
+    new_status = status_map[decision]
+    output["new_status"] = new_status
+    order["status"] = new_status
+    order["last_agent"] = "Opérateur"
+
+    missing = output.get("missing_components", [])
+    cutoff_op = output.get("cutoff_operation")
+
+    if decision == "FULL_RELEASE":
+        if not missing:
+            instruction = "Production normale — tous les composants sont disponibles."
+        else:
+            shortage = ", ".join(f"{mc['itemCode']} (manque {mc['qtyShortage']})" for mc in missing)
+            instruction = (
+                f"⚠️ Lancement complet sur décision opérateur malgré composants manquants : {shortage}. "
+                f"Risque de blocage en production."
+            )
+    elif decision == "PARTIAL_RELEASE":
+        if missing and cutoff_op:
+            last_doable_op = _find_last_doable(ROUTING, cutoff_op)
+            shortage = ", ".join(f"{mc['itemCode']} (manque {mc['qtyShortage']})" for mc in missing)
+            last_op_label = last_doable_op["operationId"] if last_doable_op else "?"
+            instruction = (
+                f"Produire jusqu'à {last_op_label} inclus, "
+                f"puis mettre de côté en attente de : {shortage}"
+            )
+        else:
+            instruction = "Lancement partiel sur décision opérateur."
+    else:  # DELAYED_RELEASE
+        critical = [mc["itemCode"] for mc in missing if mc.get("isCritical")]
+        if critical:
+            instruction = (
+                f"OF reporté — composants critiques manquants : {', '.join(critical)}. "
+                f"Attente réapprovisionnement."
+            )
+        else:
+            instruction = "OF reporté sur décision opérateur."
+
+    output["instruction"] = instruction
+    return instruction
 
 
 # =============================================================================
@@ -321,16 +501,21 @@ def run_agent1(of_id: str, orders: Dict) -> Dict:
 # =============================================================================
 
 def run_orchestrator(agent1_outputs: Dict) -> List[Dict]:
-    """Scanne les outputs Agent 1 et retourne la watchlist pour Agent 2."""
+    """Scanne les outputs Agent 1 et retourne la watchlist pour Agent 2.
+
+    Ne prend en compte que les OF où l'opérateur a validé sa décision.
+    """
     watchlist = []
     for of_id, output in agent1_outputs.items():
-        if output.get("new_status") in ("PartiallyReleased", "Delayed"):
+        op_decision = output.get("operator_decision")
+        if op_decision in ("PARTIAL_RELEASE", "DELAYED_RELEASE"):
             watchlist.append({
                 "of_id": of_id,
                 "status": output["new_status"],
                 "productCode": output["productCode"],
-                "decision": output["decision"],
+                "decision": op_decision,
                 "risk_level": output.get("risk_level", "?"),
+                "days_until_due": output.get("days_until_due", "?"),
             })
     return watchlist
 

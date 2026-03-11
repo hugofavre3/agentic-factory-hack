@@ -11,6 +11,7 @@ from datetime import date, datetime, timezone
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from data import (
     run_agent1, run_orchestrator, run_agent2, build_seed_orders,
+    apply_operator_decision,
     BOM_FULL, DEFAULT_STOCK, ROUTING,
     _check_availability, _find_cutoff, _find_last_doable,
     build_live_context_agent1, build_live_context_agent2,
@@ -53,10 +54,10 @@ st.markdown(
 st.divider()
 
 total_of = len(sim_orders)
-k1, k2, k3, k4 = st.columns(4)
+k1, k2, k3, k4, k5 = st.columns(5)
 
 status_counts = {}
-for s in ["Created", "Released", "PartiallyReleased", "Delayed", "ReadyToResume"]:
+for s in ["Created", "AwaitingDecision", "Released", "PartiallyReleased", "Delayed", "ReadyToResume"]:
     status_counts[s] = sum(1 for o in sim_orders.values() if o["status"] == s)
 
 critical_count = sum(
@@ -65,13 +66,25 @@ critical_count = sum(
     or st.session_state["agent1_outputs"].get(of_id, {}).get("global_risk_score", 0) > 60
 )
 
-k1.metric("📐 Non traités", status_counts["Created"], help="OF pas encore analysés par Agent 1")
-k2.metric("🟠 Attente pièces", status_counts["PartiallyReleased"] + status_counts["Delayed"], help="Partiels + reportés")
-k3.metric("✅ Prêts / Lancés", status_counts["ReadyToResume"] + status_counts["Released"], help="Prêts à reprendre + lancés complets")
-k4.metric("📦 Total OF", total_of)
+# Nombre d'OF en risque retard (delay_probability_pct > 50 %)
+delay_risk_count = sum(
+    1 for of_id in sim_orders
+    if st.session_state["agent1_outputs"].get(of_id, {}).get("delay_probability_pct", 0) > 50
+)
 
+k1.metric("📐 Non traités", status_counts["Created"], help="OF pas encore analysés par Agent 1")
+k2.metric("⏳ En attente décision", status_counts["AwaitingDecision"], help="Analysés par l'IA, l'opérateur doit trancher")
+k3.metric("🟠 Attente pièces", status_counts["PartiallyReleased"] + status_counts["Delayed"], help="Partiels + reportés")
+k4.metric("✅ Prêts / Lancés", status_counts["ReadyToResume"] + status_counts["Released"], help="Prêts à reprendre + lancés complets")
+k5.metric("📦 Total OF", total_of)
+
+captions = []
 if critical_count:
-    st.caption(f"⚠️ Dont **{critical_count}** OF critique(s) (score risque > 60)")
+    captions.append(f"⚠️ **{critical_count}** OF critique(s) (score risque > 60)")
+if delay_risk_count:
+    captions.append(f"🔴 **{delay_risk_count}** OF en risque retard (échéance menacée)")
+if captions:
+    st.caption(" · ".join(captions))
 
 # =============================================================================
 # Tableau "OF du jour"
@@ -102,19 +115,27 @@ for of_id, order in sim_orders.items():
         "PartiallyReleased": "🟠 Partiel",
         "Delayed": "🔴 Différé",
         "ReadyToResume": "✅ Prêt reprise",
+        "AwaitingDecision": "⏳ Att. décision",
     }
     status_label = status_labels.get(status, "🔵 En attente")
 
     risk_icon = {"HIGH": "🔴", "MEDIUM": "🟠", "LOW": "🟢"}.get(risk_level, "⚪")
 
+    # Calcul jours avant échéance
+    due_dt = datetime.fromisoformat(order["dueDate"].replace("Z", "+00:00"))
+    days_left = (due_dt - datetime.now(timezone.utc)).days
+    delay_icon = "🔴" if days_left < 10 else "🟠" if days_left < 20 else "🟢"
+
     rows.append({
         "OF": order["orderNumber"],
         "Produit": order["productCode"],
         "Statut": status_label,
+        "Échéance": order["dueDate"][:10],
+        "J restants": f"{delay_icon} {days_left} j",
         "Risque": f"{risk_icon} {risk_level}",
         "Score": score,
+        "Retard %": f"{a1.get('delay_probability_pct', '—')} %" if a1 else "—",
         "Manquants": manquants,
-        "ETA reprise": f"{a2.get('overall_eta_days', '—')}j" if a2.get('overall_eta_days') else "—",
         "Priorité": order["priority"],
         "Dernier agent": order.get("last_agent", "—"),
     })
@@ -156,7 +177,12 @@ with left:
     st.markdown(f"- Produit : `{selected_order['productCode']}`")
     st.markdown(f"- Quantité : **{selected_order['quantity']}**")
     st.markdown(f"- Priorité : **{selected_order['priority']}**")
-    st.markdown(f"- Échéance : **{selected_order['dueDate'][:10]}**")
+
+    # ── Échéance + risque retard (toujours visible) ──
+    due_dt = datetime.fromisoformat(selected_order["dueDate"].replace("Z", "+00:00"))
+    _days_left = (due_dt - datetime.now(timezone.utc)).days
+    _due_icon = "🔴" if _days_left < 10 else "🟠" if _days_left < 20 else "🟢"
+    st.markdown(f"- Échéance : **{selected_order['dueDate'][:10]}** — {_due_icon} **{_days_left} jours restants**")
     st.markdown(f"- Statut : **{selected_order['status']}**")
 
     st.markdown("---")
@@ -175,25 +201,54 @@ with left:
 with right:
 
     # ─── Agent 1 ────────────────────────────────────────────────
-    st.markdown("#### 🚀 Lancer l'analyse de lancement (Agent 1)")
-    st.caption("*Simule l'analyse matinale : lancer en complet, en partiel, ou reporter ?*")
+    st.markdown("#### 🚀 Analyse IA — Recommandation de lancement (Agent 1)")
+    st.caption(
+        "*L'IA analyse le risque, l'échéance et l'historique, puis **recommande** un scénario. "
+        "La décision finale vous appartient.*"
+    )
 
-    if st.button("Lancer Agent 1 sur cet OF", key="btn_agent1", type="primary"):
+    if st.button("Lancer l'analyse Agent 1", key="btn_agent1", type="primary"):
         output = run_agent1(selected_of_id, orders)
         st.session_state["agent1_outputs"][selected_of_id] = output
 
-        decision = output["decision"]
+    # ── Affichage si l'analyse existe ───────────────────────────
+    if selected_of_id in st.session_state["agent1_outputs"]:
+        output = st.session_state["agent1_outputs"][selected_of_id]
+        reco = output["recommended_decision"]
         risk = output["risk_level"]
         score = output["global_risk_score"]
+        days_left = output.get("days_until_due", "?")
+        delay_pct = output.get("delay_probability_pct", 0)
+        penalty = output.get("estimated_penalty_eur", 0)
 
-        if decision == "FULL_RELEASE":
-            st.success(f"✅ **Lancement complet** — Risque {risk} ({score}/100)")
-        elif decision == "PARTIAL_RELEASE":
-            st.warning(f"⚠️ **Lancement partiel** — Risque {risk} ({score}/100)")
+        # ── Bandeau risque retard ──
+        st.markdown("##### ⏱️ Risque retard")
+        rc1, rc2, rc3, rc4 = st.columns(4)
+        _dl_icon = "🔴" if isinstance(days_left, int) and days_left < 10 else "🟠" if isinstance(days_left, int) and days_left < 20 else "🟢"
+        rc1.metric("Jours avant échéance", f"{_dl_icon} {days_left} j")
+        _dp_icon = "🔴" if delay_pct > 60 else "🟠" if delay_pct > 20 else "🟢"
+        rc2.metric("Probabilité retard", f"{_dp_icon} {delay_pct} %")
+        rc3.metric("Retard estimé", f"{output.get('estimated_late_days', 0)} j")
+        rc4.metric("Pénalités estimées", f"{penalty:,.0f} €")
+
+        if output.get("delay_risk_summary"):
+            st.info(f"📅 {output['delay_risk_summary']}")
+
+        # ── Recommandation IA ──
+        st.markdown("##### 💡 Recommandation de l'IA")
+        reco_labels = {
+            "FULL_RELEASE": ("✅", "Lancement complet"),
+            "PARTIAL_RELEASE": ("⚠️", "Lancement partiel"),
+            "DELAYED_RELEASE": ("🛑", "Report"),
+        }
+        reco_icon, reco_label = reco_labels.get(reco, ("?", reco))
+
+        if reco == "FULL_RELEASE":
+            st.success(f"{reco_icon} **{reco_label}** — Risque {risk} ({score}/100)")
+        elif reco == "PARTIAL_RELEASE":
+            st.warning(f"{reco_icon} **{reco_label}** — Risque {risk} ({score}/100)")
         else:
-            st.error(f"🛑 **Report recommandé** — Risque {risk} ({score}/100)")
-
-        st.markdown(f"**Consigne atelier** : {output['instruction']}")
+            st.error(f"{reco_icon} **{reco_label}** — Risque {risk} ({score}/100)")
 
         if output.get("ai_reasoning"):
             with st.expander("💬 Explication de l'IA"):
@@ -203,6 +258,28 @@ with right:
             with st.expander("📊 Facteurs de risque"):
                 st.dataframe(pd.DataFrame(output["risk_factors"]), use_container_width=True, hide_index=True)
 
+        if output.get("sla_impact"):
+            st.caption(f"📋 **SLA** : {output['sla_impact']}")
+
+        # ── Comparaison des scénarios ──
+        alt = output.get("alternative_scenarios", [])
+        if alt:
+            st.markdown("##### 📋 Comparaison des scénarios")
+            alt_rows = []
+            for sc in alt:
+                is_reco = "★" if sc["choice"] == reco else ""
+                alt_rows.append({
+                    "Scénario": f"{sc['label']} {is_reco}",
+                    "Faisable": "✅" if sc["feasible"] else "❌",
+                    "Fin estimée": sc.get("estimated_completion") or "—",
+                    "Marge (j)": sc["margin_days"] if sc["margin_days"] is not None else "—",
+                    "Risque retard": f"{sc['delay_risk_pct']} %" if sc["delay_risk_pct"] is not None else "—",
+                    "Pénalité €": f"{sc['penalty_eur']:,.0f}" if sc["penalty_eur"] is not None else "—",
+                    "Commentaire": sc["comment"],
+                })
+            st.dataframe(pd.DataFrame(alt_rows), use_container_width=True, hide_index=True)
+
+        # ── Prompt / JSON techniques ──
         _a1_missing = _check_availability(selected_order["components"], selected_order["quantity"], selected_order["stock"])
         _a1_cutoff = _find_cutoff(ROUTING, _a1_missing)
         _a1_last = _find_last_doable(ROUTING, _a1_cutoff)
@@ -215,32 +292,57 @@ with right:
         with st.expander("🔧 Détail technique (JSON)"):
             st.json(output)
 
-    elif selected_of_id in st.session_state["agent1_outputs"]:
-        output = st.session_state["agent1_outputs"][selected_of_id]
-        decision = output["decision"]
-        risk = output["risk_level"]
-        score = output["global_risk_score"]
-
-        if decision == "FULL_RELEASE":
-            st.success(f"✅ **Lancement complet** — Risque {risk} ({score}/100)")
-        elif decision == "PARTIAL_RELEASE":
-            st.warning(f"⚠️ **Lancement partiel** — Risque {risk} ({score}/100)")
+        # ── Décision opérateur ──────────────────────────────────
+        st.markdown("---")
+        if output.get("operator_decision"):
+            # Décision déjà prise
+            op_dec = output["operator_decision"]
+            dec_icon, dec_label = reco_labels.get(op_dec, ("?", op_dec))
+            agreed = "✅ (conforme IA)" if op_dec == reco else "⚡ (override IA)"
+            st.success(f"🎯 **Décision opérateur : {dec_icon} {dec_label}** {agreed}")
+            st.markdown(f"**Consigne atelier** : {output.get('instruction', '—')}")
         else:
-            st.error(f"🛑 **Report recommandé** — Risque {risk} ({score}/100)")
+            # En attente de décision
+            st.markdown("##### 🎯 Votre décision")
+            st.caption("*Choisissez le scénario de lancement pour cet OF. L'IA recommande mais vous décidez.*")
 
-        st.markdown(f"**Consigne atelier** : {output['instruction']}")
+            # Construire les options avec labels enrichis
+            decision_options = ["FULL_RELEASE", "PARTIAL_RELEASE", "DELAYED_RELEASE"]
+            decision_labels = {
+                "FULL_RELEASE": "✅ Lancement complet",
+                "PARTIAL_RELEASE": "⚠️ Lancement partiel",
+                "DELAYED_RELEASE": "🛑 Report / Différé",
+            }
+            # Pré-sélectionner la recommandation IA
+            default_idx = decision_options.index(reco) if reco in decision_options else 0
 
-        _a1c_missing = _check_availability(selected_order["components"], selected_order["quantity"], selected_order["stock"])
-        _a1c_cutoff = _find_cutoff(ROUTING, _a1c_missing)
-        _a1c_last = _find_last_doable(ROUTING, _a1c_cutoff)
-        _a1c_mvp = "FULL_RELEASE" if not _a1c_missing else "PARTIAL_RELEASE"
-        _a1c_prompt = build_live_context_agent1(selected_order, selected_order["stock"], _a1c_missing, _a1c_mvp, _a1c_cutoff, _a1c_last)
-        with st.expander("📝 Voir le prompt envoyé à l'Agent 1"):
-            st.code(AGENT1_SYSTEM_PROMPT, language="markdown")
-            st.code(_a1c_prompt, language="markdown")
+            chosen = st.radio(
+                "Scénario de release :",
+                options=decision_options,
+                format_func=lambda x: f"{decision_labels[x]} {'★ Recommandé' if x == reco else ''}",
+                index=default_idx,
+                key=f"radio_decision_{selected_of_id}",
+                horizontal=True,
+            )
 
-        with st.expander("🔧 Détail technique (JSON)"):
-            st.json(output)
+            # Avertissement si l'opérateur choisit différemment de l'IA
+            if chosen != reco:
+                st.warning(
+                    f"⚡ Vous vous écartez de la recommandation IA ({reco_label}). "
+                    f"Assurez-vous d'avoir évalué le risque."
+                )
+                # Montrer l'impact du scénario choisi
+                chosen_sc = next((s for s in alt if s["choice"] == chosen), None)
+                if chosen_sc and chosen_sc.get("comment"):
+                    st.caption(f"📌 {chosen_sc['comment']}")
+
+            if st.button("✅ Valider la décision", key=f"btn_validate_{selected_of_id}", type="primary"):
+                instruction = apply_operator_decision(
+                    selected_of_id, orders, st.session_state["agent1_outputs"], chosen
+                )
+                st.success(f"🎯 **Décision validée : {decision_labels[chosen]}**")
+                st.markdown(f"**Consigne atelier** : {instruction}")
+                st.rerun()
 
     st.divider()
 
@@ -418,19 +520,23 @@ a2_out = st.session_state["agent2_outputs"].get(focus_of_id, {})
 # Timeline
 st.markdown("**Progression de l'OF**")
 
+has_decision = bool(a1_out.get("operator_decision"))
+
 if focus_order["status"] in ("Released", "ReadyToResume"):
-    current_step = 4
+    current_step = 5
 elif a2_out:
-    current_step = 3
+    current_step = 4
 elif focus_of_id in [w["of_id"] for w in st.session_state.get("watchlist", [])]:
+    current_step = 3
+elif has_decision:
     current_step = 2
 elif a1_out:
     current_step = 1
 else:
     current_step = 0
 
-steps = ["Créé", "Décision Agent 1", "En watchlist", "Vérification Agent 2", "Prêt / Lancé"]
-cols_tl = st.columns(5)
+steps = ["Créé", "Analyse IA", "Décision opérateur", "En watchlist", "Vérification Agent 2", "Prêt / Lancé"]
+cols_tl = st.columns(6)
 for i, (col, step) in enumerate(zip(cols_tl, steps)):
     if i < current_step:
         col.markdown(f"✅ **{step}**")
@@ -439,24 +545,50 @@ for i, (col, step) in enumerate(zip(cols_tl, steps)):
     else:
         col.markdown(f"⚪ {step}")
 
+# ── Risque retard dans le focus ──
+if a1_out:
+    focus_days_left = a1_out.get("days_until_due", "?")
+    focus_delay_pct = a1_out.get("delay_probability_pct", 0)
+    focus_penalty = a1_out.get("estimated_penalty_eur", 0)
+    _fd_icon = "🔴" if isinstance(focus_days_left, int) and focus_days_left < 10 else "🟠" if isinstance(focus_days_left, int) and focus_days_left < 20 else "🟢"
+    st.markdown(
+        f"**Échéance** : {focus_order['dueDate'][:10]} — "
+        f"{_fd_icon} **{focus_days_left} j** restants · "
+        f"Risque retard **{focus_delay_pct} %** · "
+        f"Pénalités **{focus_penalty:,.0f} €**"
+    )
+
 st.markdown("---")
 st.markdown("**Derniers messages des agents**")
 
 if a1_out:
-    decision = a1_out["decision"]
+    reco = a1_out.get("recommended_decision", "?")
+    op_dec = a1_out.get("operator_decision")
     risk = a1_out["risk_level"]
-    if decision == "FULL_RELEASE":
-        a1_msg = "On lance en complet, risque faible. Tous les composants sont disponibles."
-    elif decision == "PARTIAL_RELEASE":
-        parts = ", ".join(mc["itemCode"] for mc in a1_out.get("missing_components", []))
-        last_op = a1_out.get("cutoff_operation", {})
-        before_op = last_op.get("description", "?") if last_op else "?"
-        a1_msg = f"On lance en partiel — il manque {parts}. On produit jusqu'avant {before_op}, risque {risk.lower()}."
-    else:
-        parts = ", ".join(mc["itemCode"] for mc in a1_out.get("missing_components", []))
-        a1_msg = f"Report recommandé — trop de composants critiques manquants ({parts}). Risque {risk.lower()}."
+
+    reco_labels = {
+        "FULL_RELEASE": "lancement complet",
+        "PARTIAL_RELEASE": "lancement partiel",
+        "DELAYED_RELEASE": "report",
+    }
+    reco_txt = reco_labels.get(reco, reco)
+
+    a1_msg = f"Recommandation IA : **{reco_txt}** (risque {risk.lower()}, score {a1_out['global_risk_score']}/100)."
+    if a1_out.get("missing_components"):
+        parts = ", ".join(mc["itemCode"] for mc in a1_out["missing_components"])
+        a1_msg += f" Composants manquants : {parts}."
 
     st.info(f"🤖 **Agent 1** : {a1_msg}")
+
+    if op_dec:
+        op_txt = reco_labels.get(op_dec, op_dec)
+        if op_dec == reco:
+            st.success(f"🎯 **Opérateur** : Décision **{op_txt}** (conforme IA)")
+        else:
+            st.warning(f"⚡ **Opérateur** : Décision **{op_txt}** (override IA qui recommandait {reco_txt})")
+        st.markdown(f"**Consigne** : {a1_out.get('instruction', '—')}")
+    else:
+        st.caption("⏳ En attente de décision opérateur.")
 
     if a1_out.get("ai_reasoning"):
         with st.expander("💬 Explication complète"):
@@ -589,7 +721,7 @@ with custom_right:
             now = datetime.now(timezone.utc).isoformat()
             output = {
                 "of_id": "of-custom-001", "orderNumber": "OF-CUSTOM-001",
-                "productCode": "BOGIE_Y32", "quantity": c_qty, "decision": decision,
+                "productCode": "BOGIE_Y32", "quantity": c_qty, "recommended_decision": decision,
                 "previous_status": "Created", "timestamp": now,
                 "ai_enhanced": ai_analysis is not None,
                 "global_risk_score": (ai_analysis or {}).get("global_risk_score", 0),
@@ -622,7 +754,7 @@ with custom_right:
             st.session_state["custom_of_status"] = output["new_status"]
             status.update(label="✅ Agent 1 terminé", state="complete")
 
-        d, rl, rs = output["decision"], output["risk_level"], output["global_risk_score"]
+        d, rl, rs = output["recommended_decision"], output["risk_level"], output["global_risk_score"]
         {"FULL_RELEASE": st.success, "PARTIAL_RELEASE": st.warning}.get(d, st.error)(
             f"{'✅' if d=='FULL_RELEASE' else '⚠️' if d=='PARTIAL_RELEASE' else '🛑'} **{d}** — Risque {rl} ({rs}/100)")
         st.markdown(f"**Consigne** : {output['instruction']}")
@@ -639,7 +771,7 @@ with custom_right:
 
     elif "of-custom-001" in st.session_state.get("agent1_outputs", {}):
         prev = st.session_state["agent1_outputs"]["of-custom-001"]
-        d, rl, rs = prev["decision"], prev["risk_level"], prev["global_risk_score"]
+        d, rl, rs = prev["recommended_decision"], prev["risk_level"], prev["global_risk_score"]
         {"FULL_RELEASE": st.success, "PARTIAL_RELEASE": st.warning}.get(d, st.error)(
             f"{'✅' if d=='FULL_RELEASE' else '⚠️' if d=='PARTIAL_RELEASE' else '🛑'} **{d}** — Risque {rl} ({rs}/100)")
         st.markdown(f"**Consigne** : {prev['instruction']}")
