@@ -1,0 +1,64 @@
+{
+  "of_id": "of-2026-00123",
+  "orderNumber": "OF-2026-00123",
+  "productCode": "BOGIE_Y32",
+  "quantity": 4,
+  "decision": "PARTIAL_RELEASE",
+  "previous_status": "Created",
+  "timestamp": "2026-03-11T13:13:47.176332+00:00",
+  "ai_enhanced": true,
+  "global_risk_score": 72,
+  "risk_level": "HIGH",
+  "risk_factors": [
+    {
+      "factor": "Composant critique BRAKE_DISC indisponible",
+      "score": 95,
+      "detail": "Aucun BRAKE_DISC en stock ni immédiatement disponible ; pièce critique. Historique de blocage sur cette référence."
+    },
+    {
+      "factor": "Traction Motor TM stock limite",
+      "score": 60,
+      "detail": "Stock minimalement suffisant à ce stade, mais aucun en transit. Peu d’effet direct sur le démarrage, mais vigilance."
+    },
+    {
+      "factor": "Slot machine disponible",
+      "score": 20,
+      "detail": "Excellent créneau machine disponible permettant de profiter du temps avant blocage."
+    },
+    {
+      "factor": "Historique de production partielle",
+      "score": 80,
+      "detail": "Tous les OF partiellement lancés sur BRAKE_DISC ont accusé un retard, risquant la pénalité SLA."
+    },
+    {
+      "factor": "SLA client premium",
+      "score": 90,
+      "detail": "Tolérance de retard très faible (max 2 jours), pénalité élevée par jour de retard, aggravé si la pièce n’arrive pas."
+    }
+  ],
+  "recommended_start_slot": "SLOT-2026-03-11-AM",
+  "estimated_production_days": 3,
+  "sla_impact": "Le risque de pénalité est élevé : dans 60% des précédents, le manque de BRAKE_DISC a causé 3-4 jours de retard, ce qui exposerait à 1-2 jours de dépassement SLA et donc 5000 à 10000€ de pénalités potentielles si le réapprovisionnement n'est pas sécurisé sous 3 jours après OP30.",
+  "ai_reasoning": "L’Ordre de Fabrication présente un risque élevé principalement à cause de l’indisponibilité du composant critique BRAKE_DISC, qui bloque l’opération OP40_BRAKE_ASSEMBLY, nécessaire pour terminer les bogies. Néanmoins, les trois premières opérations (préparation du châssis, montage wheelset et suspension) peuvent être réalisées immédiatement avec le stock actuel. Le schéma historique montre que les OF bloqués sur BRAKE_DISC subissent généralement 3 à 4 jours de retard. Le client final (SNCF_TGV Premium) tolère un retard maximal de 2 jours avec des pénalités élevées, ce qui rend la situation très sensible. En avançant partiellement jusqu’au blocage, on exploite la bande machine disponible et réduit le risque d’engorgement atelier, mais le risque SLA subsiste si le réapprovisionnement BRAKE_DISC n’arrive pas à temps. Le créneau le plus tôt est recommandé pour débuter les opérations réalisables : SLOT-2026-03-11-AM. Décaler le lancement n’apporterait pas plus de sécurité vis-à-vis du risque pièce. Le déclenchement partiel est donc justifié pour maximiser la valeur ajoutée, sous réserve de gestion stricte de l’arrivée des disques de frein d’ici OP40.",
+  "new_status": "PartiallyReleased",
+  "missing_components": [
+    {
+      "itemCode": "BRAKE_DISC",
+      "description": "Disque de frein",
+      "qtyNeeded": 16,
+      "qtyAvailable": 0,
+      "qtyShortage": 16,
+      "isCritical": true
+    }
+  ],
+  "cutoff_operation": {
+    "operationId": "OP40_BRAKE_ASSEMBLY",
+    "sequence": 40,
+    "description": "Montage freins"
+  },
+  "resume_from_operation": {
+    "operationId": "OP40_BRAKE_ASSEMBLY",
+    "sequence": 40
+  },
+  "instruction": "Produire jusqu'à OP30_SUSPENSION (séq. 30) inclus, puis mettre de côté en attente de : BRAKE_DISC (manque 16)"
+}

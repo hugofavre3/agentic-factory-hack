@@ -1,5 +1,7 @@
 # Challenge 3: Maintenance Scheduler & Parts Ordering Agents
 
+French workshop note for the OF planning / stock monitoring MVP: see [AGENTS-OF-IA.md](AGENTS-OF-IA.md).
+
 Welcome to Challenge 3!
 
 In this challenge, you'll work with two specialized AI agents that optimize factory operations through intelligent maintenance scheduling and automated supply chain management.
