@@ -1,4 +1,4 @@
-"""Home — Pilotage intelligent des OF partiels — Bogies.
+"""Home — Pilotage des retards de production bogies par IA — Maestro & Sentinelle.
 
 Point d'entrée Streamlit multipage.
 Lancer avec :
@@ -9,7 +9,7 @@ import streamlit as st
 from data import build_seed_orders
 
 st.set_page_config(
-    page_title="Pilotage intelligent des OF partiels — Bogies",
+    page_title="Pilotage des retards — Maestro & Sentinelle",
     page_icon="🏭",
     layout="wide",
 )
@@ -22,10 +22,10 @@ def init_state():
     """Seed les données en session si pas encore fait."""
     if "orders" not in st.session_state:
         st.session_state["orders"] = build_seed_orders()
-    if "agent1_outputs" not in st.session_state:
-        st.session_state["agent1_outputs"] = {}
-    if "agent2_outputs" not in st.session_state:
-        st.session_state["agent2_outputs"] = {}
+    if "maestro_outputs" not in st.session_state:
+        st.session_state["maestro_outputs"] = {}
+    if "sentinelle_outputs" not in st.session_state:
+        st.session_state["sentinelle_outputs"] = {}
     if "watchlist" not in st.session_state:
         st.session_state["watchlist"] = []
 
@@ -35,110 +35,103 @@ init_state()
 # Sidebar
 # =============================================================================
 
-st.sidebar.title("🏭 Pilotage OF Bogies")
+st.sidebar.title("🏭 Maestro & Sentinelle")
 st.sidebar.caption(
     "Naviguez entre les vues :\n"
-    "1. **Cockpit Jour J** — Supervision terrain\n"
-    "2. **Dans la tête de l'IA** — Détail agents\n"
-    "3. **Vision Macro & Impact** — Pilotage projet"
+    "1. **Cockpit d'anticipation** — Risques et inputs\n"
+    "2. **Maestro & Sentinelle** — Décisions et impacts\n"
+    "3. **Vision Macro** — Impact global des décisions IA"
 )
 st.sidebar.divider()
 if st.sidebar.button("🔄 Réinitialiser la démo", type="secondary"):
     st.session_state["orders"] = build_seed_orders()
-    st.session_state["agent1_outputs"] = {}
-    st.session_state["agent2_outputs"] = {}
+    st.session_state["maestro_outputs"] = {}
+    st.session_state["sentinelle_outputs"] = {}
     st.session_state["watchlist"] = []
-    st.session_state.pop("custom_of_status", None)
     st.rerun()
 
 # =============================================================================
 # Page Home
 # =============================================================================
 
-st.title("🏭 Pilotage intelligent des OF partiels — Bogies")
+st.title("🏭 Pilotage des retards de production bogies par IA")
+st.markdown("## Maestro & Sentinelle")
 
 st.markdown(
-    "**Aujourd'hui, quand il manque une pièce, vous lancez quand même, vous stockez à côté, "
-    "vous suivez à la main.** On va voir comment deux agents IA vous assistent pour décider vite "
-    "et ne plus laisser dormir de valeur en bord de ligne."
+    "**Dans une industrie où l'on ne peut pas s'arrêter en plein milieu d'un bogie, "
+    "l'IA anticipe les risques de blocage bien avant qu'ils n'arrivent.**\n\n"
+    "La question clé : *\"Si je lance maintenant, ai-je un risque réaliste de me retrouver "
+    "coincé faute de pièces à l'étape X, ou bien les pièces auront-elles très probablement "
+    "eu le temps d'arriver avant que la ligne ne l'atteigne ?\"*"
 )
 
 st.divider()
 
-# --- Fil narratif de la démo ---
-st.subheader("🎯 Ce que vous allez voir")
+# --- Les deux agents ---
+st.subheader("🎯 Deux agents, un objectif : anticiper, pas subir")
 
-col1, col2, col3 = st.columns(3)
+col1, col2 = st.columns(2)
 
 with col1:
     st.markdown(
-        "### 📋 Cockpit Jour J\n"
-        "*Supervision terrain*\n\n"
-        "En un coup d'œil : combien d'OF sont bloqués, "
-        "lesquels sont prêts à repartir, où sont les risques.\n\n"
-        "**→** Simulez 3 scénarios (OK / moyen / critique) "
-        "et lancez les agents en un clic."
+        "### 🎼 Maestro\n"
+        "*L'assistant planificateur*\n\n"
+        "Regarde en avance le film de production : étapes, "
+        "temps de passage, stock, délais fournisseurs, historique.\n\n"
+        "**Produit** :\n"
+        "- Un niveau de risque d'arrêt (🟢 / 🟠 / 🔴)\n"
+        "- Une recommandation de lancement ou replanification\n"
+        "- Un plan de commande fournisseur\n"
+        "- Un mail fournisseur simulé"
     )
 
 with col2:
     st.markdown(
-        "### 🧠 Dans la tête de l'IA\n"
-        "*Détail des agents*\n\n"
-        "L'IA n'est pas une boîte noire : vous voyez exactement **pourquoi** "
-        "elle recommande un lancement partiel ou un report.\n\n"
-        "**→** Stock, historique, SLA, calendrier : tout est explicable."
+        "### 🔭 Sentinelle\n"
+        "*L'agent qui surveille*\n\n"
+        "Surveille les hypothèses prises par Maestro et "
+        "actualise en continu le risque de retard.\n\n"
+        "**Produit** :\n"
+        "- Mise à jour du risque (levé / confirmé)\n"
+        "- Suivi des livraisons fournisseurs\n"
+        "- Impact actualisé sur la date de fin\n"
+        "- Proposition de reprogrammation si nécessaire"
     )
 
-with col3:
+st.divider()
+
+# --- Les 3 scénarios ---
+st.subheader("📋 Trois scénarios de démo")
+
+col_ok, col_moy, col_crit = st.columns(3)
+
+with col_ok:
     st.markdown(
-        "### 📊 Vision Macro & Impact\n"
-        "*Pilotage projet*\n\n"
-        "Pour le chef d'atelier ou le responsable supply : "
-        "les gains estimés, les OF sous tension, "
-        "la répartition des statuts.\n\n"
-        "**→** Moins d'OF démarrés pour rien, plus de visibilité."
+        "### ✅ OK\n"
+        "Les pièces sont là ou arriveront bien avant l'étape "
+        "qui les utilise. Maestro valide : *\"On lance comme prévu.\"*"
+    )
+
+with col_moy:
+    st.markdown(
+        "### ⚠️ Moyen\n"
+        "Une pièce manque, ETA serrée. Maestro recommande un "
+        "créneau décalé et surveille le risque. "
+        "Sentinelle confirme ou lève l'alerte."
+    )
+
+with col_crit:
+    st.markdown(
+        "### 🛑 Critique\n"
+        "Blocage quasi certain. Maestro propose de ne pas "
+        "lancer et donne des créneaux de reprogrammation. "
+        "Sentinelle actualise si la situation s'améliore."
     )
 
 st.divider()
 
-# --- Flux technique (discret) ---
-with st.expander("🔧 Flux technique des agents"):
-    st.markdown("""
-```
-Agent 1 (Décision de lancement)      →  "Complet / Partiel / Décalé"
-    ↓ output JSON
-Orchestrateur (Watchlist automatique) →  "Quels OF surveiller ?"
-    ↓ watchlist JSON
-Agent 2 (Surveillance & reprise)     →  "Pièces arrivées ? Reprendre ici."
-```
-
-| Scénario démo | Stock | Décision | Risque |
-|---|---|---|---|
-| ✅ OK | Tout disponible | Lancement complet | Faible |
-| ⚠️ Moyen | 1 pièce manquante (freins) | Lancement partiel | Moyen |
-| 🛑 Critique | 3 pièces critiques absentes | Report | Élevé |
-    """)
-
-st.divider()
-
-# --- État courant ---
-st.subheader("📡 État courant des OF")
-
-orders = st.session_state["orders"]
-# Exclure custom pour les KPIs de la home
-sim_orders = {k: v for k, v in orders.items() if k != "of-custom-001"}
-
-statuses = ["Created", "Released", "PartiallyReleased", "Delayed", "ReadyToResume"]
-labels_fr = {
-    "Created": "Non traités",
-    "Released": "Lancés",
-    "PartiallyReleased": "En partiel",
-    "Delayed": "Différés",
-    "ReadyToResume": "Prêts à reprendre",
-}
-icons = {"Created": "🔵", "Released": "🟢", "PartiallyReleased": "🟠", "Delayed": "🔴", "ReadyToResume": "✅"}
-
-cols = st.columns(len(statuses))
-for i, status in enumerate(statuses):
-    count = sum(1 for o in sim_orders.values() if o["status"] == status)
-    cols[i].metric(f"{icons[status]} {labels_fr[status]}", count)
+st.caption(
+    "💡 *On ne parle plus de gérer les casses une fois qu'on est bloqué, "
+    "mais de voir 2–3 jours à l'avance où ça pourrait coincer, "
+    "et d'ajuster le planning en conséquence.*"
+)
