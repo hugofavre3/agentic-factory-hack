@@ -4,6 +4,6 @@
   "productCode": "BOGIE_Y32",
   "quantity": 4,
   "priority": "High",
-  "status": "PartiallyReleased",
+  "status": "AwaitingDecision",
   "dueDate": "2026-03-25T00:00:00Z"
 }

@@ -3,62 +3,51 @@
   "orderNumber": "OF-2026-00123",
   "productCode": "BOGIE_Y32",
   "quantity": 4,
-  "decision": "PARTIAL_RELEASE",
-  "previous_status": "Created",
-  "timestamp": "2026-03-10T17:24:33.083384+00:00",
-  "ai_enhanced": true,
-  "global_risk_score": 62,
-  "risk_level": "MEDIUM",
+  "timestamp": "2026-03-13T10:46:36.222050+00:00",
+  "risk_level": "VERT",
+  "global_risk_score": 14,
+  "probabilite_blocage_pct": 8,
+  "etape_a_risque": null,
+  "risk_steps": [],
+  "recommended_action": "LANCER_IMMEDIAT",
+  "recommended_launch_date": "2026-03-11",
+  "recommended_launch_slot": "SLOT-2026-03-11-AM",
+  "estimated_production_days": 7,
+  "days_until_due": 11,
+  "estimated_delay_days": 0,
+  "estimated_penalty_eur": 0,
+  "maestro_message": "Toutes les pièces critiques et standards sont disponibles en quantité requise pour lancer immédiatement la fabrication du bogie Y32. Les slots machines permettent un démarrage sans contrainte de charge. Les historiques montrent une légère tendance au retard, mais aucun facteur bloquant actuel n'est identifié. L’O.F. est prêt à lancer dès que possible, avec un risque global minimal.",
+  "reasoning": "1. La quantité disponible pour chaque composant CRITIQUE et standard dépasse les besoins de commande, garantissant qu’aucun blocage de composant n’est anticipé.\n2. Les slots machine en AM et PM offrent une flexibilité d’ordonnancement, avec une faible charge sur les créneaux du 11 et 13 mars.\n3. L’historique montre quelques retards ponctuels mais aussi des livraisons à temps; le contexte actuel (disponibilité pièces, flexibilité machine) réduit ce risque.\n4. L’action recommandée est LANCER_IMMEDIAT selon les règles de décision.\n5. Aucun composant manquant ou opération critique à risque n’est identifié à ce stade.",
   "risk_factors": [
     {
-      "factor": "Composants critiques manquants",
-      "score": 80,
-      "detail": "BRAKE_DISC est critique, totalement absent du stock ; dépendance forte à la livraison, risque SLA élevé."
+      "factor": "Disponibilité des composants critiques",
+      "score": 2,
+      "detail": "Tous les composants critiques (châssis, roues, frein, traction) sont disponibles en quantité supérieure au besoin."
     },
     {
-      "factor": "Historique de retard similaire",
-      "score": 60,
-      "detail": "Les OF similaires avec BRAKE_DISC manquant ont subi 3 à 4 jours de retard."
+      "factor": "Machine slot availability",
+      "score": 2,
+      "detail": "Slots disponibles avec faible à modérée charge, permettant lancement immédiat."
     },
     {
-      "factor": "SLA client Premium",
-      "score": 70,
-      "detail": "Tolérance de max 2 jours de retard chez SNCF_TGV, forte pénalité au-delà."
+      "factor": "Historique de retard",
+      "score": 7,
+      "detail": "Plusieurs O.F. récents ont eu 3-4 jours de retard, mais les conditions actuelles ne montrent pas de cause structurelle."
     },
     {
-      "factor": "Créneau machine",
-      "score": 20,
-      "detail": "Plusieurs créneaux à faible charge débutant suffisamment en avance ; pas de risque machine actuellement."
-    },
-    {
-      "factor": "Autres composants",
-      "score": 10,
-      "detail": "Tous les autres composants sont disponibles dans les quantités requises."
+      "factor": "SLA penalty risk",
+      "score": 3,
+      "detail": "Aucune pénalité anticipée compte tenu du délai prévu et disponibilité pièces."
     }
   ],
-  "recommended_start_slot": "SLOT-2026-03-11-AM",
-  "estimated_production_days": 2,
-  "sla_impact": "En commençant immédiatement, l'OF avance jusqu'à OP30 en environ 2 jours ; bloque ensuite pour attente des BRAKE_DISC. Si le réappro arrive sous 2 jours, l'assemblage final reste dans le SLA, sinon pénalités 5000€/jour possibles.",
-  "ai_reasoning": "La production peut être partiellement lancée jusqu'à l'opération OP30_SUSPENSION, car tous les composants nécessaires jusqu'à cette étape sont disponibles. Le composant BRAKE_DISC, critique et manquant, bloque l'étape OP40_BRAKE_ASSEMBLY, empêchant l'assemblage complet. L'historique montre que ce scénario entraîne généralement un retard de 3 à 4 jours, limité à l'attente de ce composant. Le risque SLA est important, car le client SNCF_TGV tolère un retard max de 2 jours avec de fortes pénalités. Toutefois, avancer les opérations disponibles permet une meilleure flexibilité une fois les disques reçus. Le créneau machine SLOT-2026-03-11-AM est recommandé : faible charge, démarre tôt pour maximiser la valeur ajoutée avant possible retard. Prévoir, néanmoins, la coordination logistique pour accélérer la livraison des BRAKE_DISC afin de limiter les impacts négatifs sur le respect du délai contractuel.",
-  "new_status": "PartiallyReleased",
-  "missing_components": [
-    {
-      "itemCode": "BRAKE_DISC",
-      "description": "Disque de frein",
-      "qtyNeeded": 16,
-      "qtyAvailable": 0,
-      "qtyShortage": 16,
-      "isCritical": true
-    }
-  ],
-  "cutoff_operation": {
-    "operationId": "OP40_BRAKE_ASSEMBLY",
-    "sequence": 40,
-    "description": "Montage freins"
-  },
-  "resume_from_operation": {
-    "operationId": "OP40_BRAKE_ASSEMBLY",
-    "sequence": 40
-  },
-  "instruction": "Produire jusqu'à OP30_SUSPENSION (séq. 30) inclus, puis mettre de côté en attente de : BRAKE_DISC (manque 16)"
+  "sla_impact": "SLA Premium (SNCF_TGV): livraison dans délai contractualisé (<2 jours de retard), aucune pénalité financière attendue. La planification garantit le respect du SLA Premium.",
+  "supplier_order_plan": [],
+  "simulated_emails": [],
+  "rescheduling_options": [],
+  "missing_components": [],
+  "cutoff_operation": null,
+  "ai_enhanced": true,
+  "operator_decision": null,
+  "previous_status": "ReadyToResume",
+  "new_status": "AwaitingDecision"
 }

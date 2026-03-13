@@ -1,13 +1,13 @@
 {
-  "generated_at": "2026-03-10T17:25:13.556979+00:00",
-  "total_agent1_outputs": 1,
+  "generated_at": "2026-03-13T10:39:09.813864+00:00",
+  "total_agent1_outputs": 2,
   "partially_released_count": 1,
   "orders": [
     {
       "of_id": "of-2026-00123",
       "status": "PartiallyReleased",
       "productCode": "BOGIE_Y32",
-      "agent1_output_file": "agent1_output_of-2026-00123.json"
+      "agent1_output_file": "agent1_output_of-2026-03-11.json"
     }
   ]
 }

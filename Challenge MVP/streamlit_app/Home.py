@@ -65,7 +65,7 @@
 # # =============================================================================
 
 # # ── Date du jour ──
-# today = date(2026, 3, 12)
+# today = date(2026, 3, 13)
 # st.markdown(
 #     f"<div style='text-align:center; padding:10px; background:#1a1a2e; border-radius:8px; margin-bottom:16px;'>"
 #     f"<span style='font-size:1.4em;'>📅 Aujourd'hui : <b>{today.strftime('%d/%m/%Y')}</b></span>"
@@ -230,7 +230,7 @@
 
 
 # # ── Date du jour ──
-# today = date(2026, 3, 12)
+# today = date(2026, 3, 13)
 # st.markdown(
 #     f"<div style='text-align:center; padding:10px; background:#1a1a2e; border-radius:8px; margin-bottom:16px;'>"
 #     f"<span style='font-size:1.4em;'>📅 Date du jour : <b>{today.strftime('%d/%m/%Y')}</b></span>"
@@ -416,7 +416,7 @@ if st.sidebar.button("🔄 Reset demo", type="secondary"):
 
 
 # ── Current date ──
-today = date(2026, 3, 12)
+today = date(2026, 3, 13)
 st.markdown(
     f"<div style='text-align:center; padding:10px; background:#1a1a2e; border-radius:8px; margin-bottom:16px;'>"
     f"<span style='font-size:1.4em;'>📅 Current date: <b>{today.strftime('%d/%m/%Y')}</b></span>"

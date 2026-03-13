@@ -2,6 +2,13 @@
   "of_id": "of-2026-00123",
   "previous_status": "PartiallyReleased",
   "new_status": "ReadyToResume",
+  "timestamp": "2026-03-13T10:40:40.698511+00:00",
+  "initial_risk_level": "HIGH",
+  "current_risk_level": "VERT",
+  "risk_evolution": "BAISSE",
+  "warning_status": "LEVE",
+  "sentinelle_message": "Parts received. Blockage risk cleared. Production can continue normally.",
+  "parts_tracking": [],
   "resolved_components": [
     {
       "itemCode": "BRAKE_DISC",
@@ -11,11 +18,12 @@
     }
   ],
   "still_missing_components": [],
-  "timestamp": "2026-03-10T17:26:18.919126+00:00",
-  "ai_enhanced": false,
-  "resume_from_operation": {
-    "operationId": "OP40_BRAKE_ASSEMBLY",
-    "sequence": 40
-  },
-  "instruction": "Reprendre la production à partir de l'opération OP40_BRAKE_ASSEMBLY. Composants disponibles : BRAKE_DISC (16/20)."
+  "updated_eta_end": null,
+  "updated_delay_days": 0,
+  "resume_priority": 1,
+  "resume_priority_reasoning": "Parts available, no residual risk. Immediate resumption recommended.",
+  "plan_b_needed": false,
+  "rescheduling_proposal": null,
+  "supplier_recommendations": [],
+  "ai_enhanced": false
 }

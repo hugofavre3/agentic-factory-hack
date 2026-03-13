@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
-"""Agent 1 IA — Planification intelligente d'Ordre de Fabrication (OF).
+"""Maestro -- Intelligent Work-Order planning agent.
 
-Enrichit la logique MVP (BOM vs stock) avec une couche IA :
-  • Score de risque global (0-100) basé sur l'historique, la BOM critique, les SLA
-  • Décision 3 voies : FULL_RELEASE / PARTIAL_RELEASE / DELAYED_RELEASE
-  • Recommandation de créneau machine optimal
-  • Explication générée par l'IA
+Analyses each Work Order (OF) and produces a launch/reschedule recommendation:
+  * Blocking-risk analysis (BOM vs stock vs routing steps)
+  * Risk scoring (0-100) with risk level (VERT / ORANGE / ROUGE)
+  * 3-way action: LANCER_IMMEDIAT / LANCER_DECALE / REPORTER_ET_REPLANIFIER
+  * Machine-slot recommendation
+  * Supplier order plan + simulated emails
+  * Rescheduling options (when risk is critical)
 
-Fallback automatique vers la logique MVP si Azure AI n'est pas configuré.
+Output JSON is consumed by the Orchestrator and the Streamlit dashboards.
+Fallback: if Azure AI is not configured the agent runs in pure deterministic mode.
 
 Usage:
     python agents/of_planning_agent_ia.py [--data-dir DATA_DIR] [--output PATH]
@@ -19,7 +22,7 @@ import json
 import logging
 import os
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -29,19 +32,21 @@ load_dotenv(override=True)
 
 logger = logging.getLogger(__name__)
 
+WORK_HOURS_PER_DAY = 8
+
+
 # =============================================================================
-# Chargement des données
+# Data loading
 # =============================================================================
 
 def load_json(filepath: str) -> Any:
-    """Charge et parse un fichier JSON."""
     with open(filepath, "r", encoding="utf-8-sig") as f:
         return json.load(f)
 
 
 def load_of(data_dir: str) -> Dict:
     of = load_json(os.path.join(data_dir, "of.json"))
-    print(f"   OF chargé : {of['id']} — produit {of['productCode']} × {of['quantity']}")
+    print(f"   OF loaded: {of['id']} -- product {of['productCode']} x {of['quantity']}")
     return of
 
 
@@ -49,38 +54,37 @@ def load_bom_and_routing(data_dir: str, product_code: str):
     bom = load_json(os.path.join(data_dir, "bom.json"))
     routing = load_json(os.path.join(data_dir, "routing.json"))
     if bom["productCode"] != product_code:
-        raise ValueError(f"BOM productCode ({bom['productCode']}) ≠ OF ({product_code})")
+        raise ValueError(f"BOM productCode ({bom['productCode']}) != OF ({product_code})")
     if routing["productCode"] != product_code:
-        raise ValueError(f"Routing productCode ({routing['productCode']}) ≠ OF ({product_code})")
+        raise ValueError(f"Routing productCode ({routing['productCode']}) != OF ({product_code})")
     components = bom["components"]
     operations = sorted(routing["operations"], key=lambda op: op["sequence"])
-    print(f"   BOM chargée : {len(components)} composants")
-    print(f"   Gamme chargée : {len(operations)} opérations")
+    print(f"   BOM loaded: {len(components)} components")
+    print(f"   Routing loaded: {len(operations)} operations")
     return components, operations
 
 
 def load_stock(data_dir: str) -> Dict[str, int]:
     snapshot = load_json(os.path.join(data_dir, "stock_snapshot.json"))
     stock = {item["itemCode"]: item["qtyAvailable"] for item in snapshot["items"]}
-    print(f"   Stock chargé : {len(stock)} références")
+    print(f"   Stock loaded: {len(stock)} references")
     return stock
 
 
 def load_optional_json(data_dir: str, filename: str) -> Any:
-    """Charge un fichier JSON optionnel, retourne None s'il est absent."""
     path = os.path.join(data_dir, filename)
     if os.path.exists(path):
         return load_json(path)
-    print(f"   ℹ️  {filename} non trouvé — données optionnelles ignorées")
+    print(f"   [info] {filename} not found -- optional data skipped")
     return None
 
 
 # =============================================================================
-# Logique MVP (déterministe)
+# Deterministic (MVP) logic
 # =============================================================================
 
-def check_availability(components: List[Dict], of_qty: int, stock: Dict[str, int]) -> List[Dict]:
-    missing: List[Dict] = []
+def check_availability(components, of_qty, stock):
+    missing = []
     for comp in components:
         qty_needed = comp["qtyPerUnit"] * of_qty
         qty_available = stock.get(comp["itemCode"], 0)
@@ -96,11 +100,7 @@ def check_availability(components: List[Dict], of_qty: int, stock: Dict[str, int
     return missing
 
 
-def decide_mvp(missing_components: List[Dict]) -> str:
-    return "FULL_RELEASE" if len(missing_components) == 0 else "PARTIAL_RELEASE"
-
-
-def find_cutoff_operation(operations: List[Dict], missing_components: List[Dict]) -> Optional[Dict]:
+def find_cutoff_operation(operations, missing_components):
     missing_codes = {mc["itemCode"] for mc in missing_components}
     for op in operations:
         if set(op.get("requiredComponents", [])) & missing_codes:
@@ -108,7 +108,7 @@ def find_cutoff_operation(operations: List[Dict], missing_components: List[Dict]
     return None
 
 
-def find_last_doable_operation(operations: List[Dict], cutoff_op: Optional[Dict]) -> Optional[Dict]:
+def find_last_doable_operation(operations, cutoff_op):
     if cutoff_op is None:
         return None
     cutoff_seq = cutoff_op["sequence"]
@@ -116,521 +116,497 @@ def find_last_doable_operation(operations: List[Dict], cutoff_op: Optional[Dict]
     return doable[-1] if doable else None
 
 
+def find_risk_steps(operations, missing_components):
+    risk_steps = []
+    missing_codes = {mc["itemCode"] for mc in missing_components}
+    for op in operations:
+        blocked_items = set(op.get("requiredComponents", [])) & missing_codes
+        for item in blocked_items:
+            mc = next(m for m in missing_components if m["itemCode"] == item)
+            cum_hours = op.get("cumulative_start_hours", 0)
+            risk_steps.append({
+                "itemCode": item,
+                "operationId": op["operationId"],
+                "sequence": op["sequence"],
+                "description": op["description"],
+                "time_to_reach_hours": cum_hours,
+                "time_to_reach_days": round(cum_hours / WORK_HOURS_PER_DAY, 1),
+                "qtyShortage": mc["qtyShortage"],
+                "isCritical": mc.get("isCritical", False),
+            })
+    return risk_steps
+
+
+def find_best_supplier(suppliers, item_code):
+    candidates = [s for s in suppliers if item_code in s.get("components", [])]
+    if not candidates:
+        return None
+    max_lead = max(s["leadTime_days"] for s in candidates) or 1
+    max_price = max(s["unitPrice_eur"] for s in candidates) or 1
+    scored = []
+    for s in candidates:
+        score = (
+            0.40 * s["reliability"]
+            + 0.35 * (1 - s["leadTime_days"] / max_lead)
+            + 0.25 * (1 - s["unitPrice_eur"] / max_price)
+        )
+        scored.append((score, s))
+    scored.sort(key=lambda x: -x[0])
+    return scored[0][1]
+
+
+def compute_days_until_due(due_date_str):
+    due = datetime.fromisoformat(due_date_str.replace("Z", "+00:00"))
+    return (due - datetime.now(timezone.utc)).days
+
+
+def mvp_decide(missing_components, risk_steps, days_until_due, suppliers):
+    if not missing_components:
+        return "LANCER_IMMEDIAT"
+    all_critical = any(mc["isCritical"] for mc in missing_components)
+    longest_lead = 0
+    for mc in missing_components:
+        sup = find_best_supplier(suppliers, mc["itemCode"])
+        if sup:
+            longest_lead = max(longest_lead, sup["leadTime_days"])
+        else:
+            longest_lead = max(longest_lead, 999)
+    earliest_cutoff_days = min((rs["time_to_reach_days"] for rs in risk_steps), default=0)
+    if all_critical and longest_lead > days_until_due:
+        return "REPORTER_ET_REPLANIFIER"
+    if longest_lead <= earliest_cutoff_days + 1:
+        return "LANCER_DECALE"
+    if len(missing_components) >= 3 or longest_lead > days_until_due * 0.7:
+        return "REPORTER_ET_REPLANIFIER"
+    return "LANCER_DECALE"
+
+
 # =============================================================================
-# Couche IA — Agent de planification OF
+# Supplier plan builder
 # =============================================================================
 
-class OFPlanningAgent:
-    """Agent IA pour la planification enrichie des OF."""
+def build_supplier_plan(missing_components, suppliers, of_number, today):
+    plan, emails = [], []
+    for mc in missing_components:
+        sup = find_best_supplier(suppliers, mc["itemCode"])
+        if not sup:
+            continue
+        order_date = today.strftime("%Y-%m-%d")
+        eta = (today + timedelta(days=sup["leadTime_days"])).strftime("%Y-%m-%d")
+        eta_display = (today + timedelta(days=sup["leadTime_days"])).strftime("%d/%m/%Y")
+        plan.append({
+            "itemCode": mc["itemCode"],
+            "recommended_supplier": sup["supplierId"],
+            "supplier_name": sup["name"],
+            "order_qty": mc["qtyShortage"],
+            "unit_price_eur": sup["unitPrice_eur"],
+            "total_price_eur": sup["unitPrice_eur"] * mc["qtyShortage"],
+            "estimated_lead_days": sup["leadTime_days"],
+            "order_date": order_date,
+            "predicted_eta": eta,
+            "confidence": sup["reliability"],
+        })
+        emails.append({
+            "to": sup.get("contactEmail", sup.get("email", "")),
+            "to_name": sup["name"],
+            "supplier_id": sup["supplierId"],
+            "subject": f"[URGENT] Order {mc['itemCode']} x {mc['qtyShortage']} -- {of_number}",
+            "body": (
+                f"Hello,\n\n"
+                f"As part of {of_number}, we have an urgent need "
+                f"for {mc['qtyShortage']} unit(s) of {mc['itemCode']}.\n\n"
+                f"Current stock: {mc['qtyAvailable']} / Requirement: {mc['qtyNeeded']}\n"
+                f"Requested delivery date: {eta_display}\n"
+                f"Impact if delayed: blockage at production step\n\n"
+                f"Please confirm availability and delivery lead time.\n\n"
+                f"Best regards,\n"
+                f"Maestro System -- Alstom AI Planning"
+            ),
+        })
+    return plan, emails
 
-    def __init__(self, project_endpoint: str, deployment_name: str):
+
+def build_rescheduling_options(supplier_plan, machine_calendar, estimated_prod_days, due_date_str):
+    if not supplier_plan:
+        return []
+    etas = [datetime.strptime(p["predicted_eta"], "%Y-%m-%d") for p in supplier_plan]
+    latest_eta = max(etas)
+    due = datetime.fromisoformat(due_date_str.replace("Z", "+00:00")).replace(tzinfo=None)
+    launch_a = latest_eta
+    completion_a = launch_a + timedelta(days=estimated_prod_days)
+    delay_a = max(0, (completion_a - due).days)
+    options = [{
+        "label": f"Slot A -- Launch on {launch_a.strftime('%d/%m')} morning",
+        "slot": f"SLOT-{launch_a.strftime('%Y-%m-%d')}-AM",
+        "launch_date": launch_a.strftime("%Y-%m-%d"),
+        "estimated_completion": completion_a.strftime("%Y-%m-%d"),
+        "delay_client_days": delay_a,
+        "penalty_eur": delay_a * 5000,
+        "comment": f"All parts available. {delay_a}-day delay.",
+    }]
+    if len(etas) > 1:
+        second_latest = sorted(etas)[-2]
+        if second_latest < latest_eta:
+            launch_b = second_latest
+            completion_b = launch_b + timedelta(days=estimated_prod_days)
+            delay_b = max(0, (completion_b - due).days)
+            options.append({
+                "label": f"Slot B -- Launch on {launch_b.strftime('%d/%m')} (partial risk)",
+                "slot": f"SLOT-{launch_b.strftime('%Y-%m-%d')}-AM",
+                "launch_date": launch_b.strftime("%Y-%m-%d"),
+                "estimated_completion": completion_b.strftime("%Y-%m-%d"),
+                "delay_client_days": delay_b,
+                "penalty_eur": delay_b * 5000,
+                "comment": "Some parts available, remaining expected shortly. Risk of blockage.",
+            })
+    return options
+
+
+# =============================================================================
+# AI layer -- Maestro agent
+# =============================================================================
+
+class MaestroAgent:
+    def __init__(self, project_endpoint, deployment_name):
         self.project_endpoint = project_endpoint
         self.deployment_name = deployment_name
 
-    async def analyze(
-        self,
-        of: Dict,
-        components: List[Dict],
-        operations: List[Dict],
-        stock: Dict[str, int],
-        missing_components: List[Dict],
-        mvp_decision: str,
-        cutoff_op: Optional[Dict],
-        last_doable_op: Optional[Dict],
-        historical_ofs: Any,
-        machine_calendar: Any,
-        sla_rules: Any,
-        demand_forecast: Any,
-    ) -> Dict:
-        """Envoie le contexte complet à l'IA et retourne la décision enrichie."""
-
-        # Import Azure AI (lazy — uniquement si cette méthode est appelée)
+    async def analyze(self, context):
         from agent_framework.azure import AzureAIClient
         from azure.identity.aio import AzureCliCredential
 
-        context = self._build_context(
-            of, components, operations, stock, missing_components,
-            mvp_decision, cutoff_op, last_doable_op,
-            historical_ofs, machine_calendar, sla_rules, demand_forecast,
+        instructions = (
+            "You are Maestro, an expert rail-industry production planner at Alstom.\n\n"
+            "Given the full context of a Work Order (OF), produce a JSON object with:\n"
+            "- risk_level: VERT | ORANGE | ROUGE\n"
+            "- global_risk_score: 0-100\n"
+            "- recommended_action: LANCER_IMMEDIAT | LANCER_DECALE | REPORTER_ET_REPLANIFIER\n"
+            "- probabilite_blocage_pct: 0-100\n"
+            "- estimated_delay_days: integer\n"
+            "- estimated_penalty_eur: integer\n"
+            "- maestro_message: executive summary for the operator\n"
+            "- reasoning: detailed multi-line explanation\n"
+            "- risk_factors: [{factor, score, detail}]\n"
+            "- sla_impact: text about SLA consequences\n"
+            "- recommended_launch_date: YYYY-MM-DD or null\n"
+            "- recommended_launch_slot: SLOT-YYYY-MM-DD-AM/PM or null\n"
+            "- estimated_production_days: integer\n"
+            "- etape_a_risque: {operationId, sequence, description, time_to_reach_days, composant_manquant} or null\n\n"
+            "Decision rules:\n"
+            "- LANCER_IMMEDIAT: all components available, risk low\n"
+            "- LANCER_DECALE: some parts missing but supplier ETA <= time-to-reach the blocking step\n"
+            "- REPORTER_ET_REPLANIFIER: critical parts missing with long lead, delay certain\n\n"
+            "Reply with a single valid JSON object. No markdown fences."
         )
 
-        instructions = """Tu es un expert en planification de production ferroviaire (Alstom).
-
-Analyse le contexte d'un Ordre de Fabrication (OF) et fournis :
-1. Un score de risque global (0-100) et un niveau de risque (HIGH / MEDIUM / LOW)
-2. Une décision parmi : FULL_RELEASE, PARTIAL_RELEASE, DELAYED_RELEASE
-3. Un créneau machine recommandé pour démarrer la production
-4. Une explication métier détaillée en français
-
-Critères de décision :
-- FULL_RELEASE : tout est disponible, risque faible, créneau OK
-- PARTIAL_RELEASE : des composants manquent mais on peut avancer partiellement
-  (la production jusqu'au cutoff apporte de la valeur et le délai de réapprovisionnement est acceptable)
-- DELAYED_RELEASE : les composants critiques (isCritical=true) manquent,
-  le risque SLA est trop élevé, ou le créneau machine est inadapté.
-  Il vaut mieux attendre que lancer partiellement.
-
-Réponds UNIQUEMENT en JSON valide."""
-
-        # Appel IA via AzureAIClient (même pattern que maintenance_scheduler_agent)
         async with AzureCliCredential() as credential:
             async with AzureAIClient(credential=credential).create_agent(
-                name="OFPlanningAgent",
-                description="Agent de planification intelligente des OF ferroviaires",
+                name="MaestroAgent",
+                description="Maestro -- intelligent work-order planner",
                 instructions=instructions,
             ) as agent:
-                print(f"   ✅ Agent IA créé : {agent.id}")
+                print(f"   [ok] AI agent created: {agent.id}")
                 result = await agent.run(context)
-                response_text = result.text
+                return json.loads(self._extract_json(result.text))
 
-        json_str = self._extract_json(response_text)
-        return json.loads(json_str)
-
-    # ── Construction du contexte ──────────────────────────────────────────
-
-    def _build_context(
-        self, of, components, operations, stock, missing_components,
-        mvp_decision, cutoff_op, last_doable_op,
-        historical_ofs, machine_calendar, sla_rules, demand_forecast,
-    ) -> str:
-        lines = [
-            "# Analyse de planification OF",
-            "",
-            "## OF en cours",
-            f"- ID : {of['id']}",
-            f"- Produit : {of['productCode']}",
-            f"- Quantité : {of['quantity']}",
-            f"- Priorité : {of.get('priority', 'N/A')}",
-            f"- Échéance : {of.get('dueDate', 'N/A')}",
-            f"- Statut actuel : {of.get('status', 'Created')}",
-            "",
-            "## BOM — Composants",
-        ]
-
-        for comp in components:
-            qty_needed = comp["qtyPerUnit"] * of["quantity"]
-            qty_avail = stock.get(comp["itemCode"], 0)
-            crit = "🔴 CRITIQUE" if comp.get("isCritical") else "⚪"
-            status = "✅" if qty_avail >= qty_needed else "❌"
-            lines.append(
-                f"- {status} {comp['itemCode']} ({crit}) — besoin {qty_needed}, dispo {qty_avail}"
-            )
-
-        lines.append("")
-        lines.append("## Gamme de fabrication")
-        missing_codes = {mc["itemCode"] for mc in missing_components}
-        for op in operations:
-            req = set(op.get("requiredComponents", []))
-            blocked = req & missing_codes
-            icon = "🔴 BLOQUÉ" if blocked else "🟢 OK"
-            lines.append(f"- séq.{op['sequence']} {op['operationId']} — {icon}")
-
-        lines.append("")
-        lines.append("## Décision MVP (déterministe)")
-        lines.append(f"- Décision : {mvp_decision}")
-        if cutoff_op:
-            lines.append(f"- Coupure à : {cutoff_op['operationId']} (séq. {cutoff_op['sequence']})")
-        if last_doable_op:
-            lines.append(f"- Dernière op réalisable : {last_doable_op['operationId']}")
-
-        if missing_components:
-            lines.append("")
-            lines.append("## Composants manquants")
-            for mc in missing_components:
-                crit_flag = " ⚠️ CRITIQUE" if mc.get("isCritical") else ""
-                lines.append(
-                    f"- {mc['itemCode']}{crit_flag} — manque {mc['qtyShortage']} "
-                    f"(besoin {mc['qtyNeeded']}, dispo {mc['qtyAvailable']})"
-                )
-
-        # Historique
-        if historical_ofs and historical_ofs.get("records"):
-            lines.append("")
-            lines.append("## Historique des OF similaires")
-            for rec in historical_ofs["records"][-5:]:
-                late_info = f"{rec['daysLate']}j retard" if rec["daysLate"] > 0 else "à l'heure"
-                partial = "partiel" if rec.get("wasPartialRelease") else "complet"
-                lines.append(
-                    f"- {rec['of_id']} — qty {rec['quantity']}, {partial}, {late_info}"
-                    + (f", bloqué par {rec['blockedComponents']}" if rec.get("blockedComponents") else "")
-                )
-
-        # Calendrier machine
-        if machine_calendar and machine_calendar.get("slots"):
-            lines.append("")
-            lines.append("## Créneaux machine disponibles")
-            for slot in machine_calendar["slots"]:
-                if slot["status"] == "available":
-                    lines.append(
-                        f"- {slot['slotId']} — {slot['date']} {slot['shift']} — "
-                        f"charge {slot['currentLoad']*100:.0f}% — {slot['availableHours']}h dispo"
-                    )
-            if machine_calendar.get("unavailabilities"):
-                lines.append("")
-                lines.append("Indisponibilités :")
-                for u in machine_calendar["unavailabilities"]:
-                    lines.append(f"- {u['date']} {u['shift']} — {u['reason']}")
-
-        # SLA
-        if sla_rules and sla_rules.get("rules"):
-            lines.append("")
-            lines.append("## Règles SLA")
-            for rule in sla_rules["rules"]:
-                lines.append(
-                    f"- Client {rule['client']} ({rule['serviceLevelAgreement']}) — "
-                    f"retard max {rule['maxAcceptableDelay_days']}j, "
-                    f"pénalité {rule['penaltyPerDayLate_eur']}€/j"
-                )
-
-        # Prévisions demande
-        if demand_forecast and demand_forecast.get("forecasts"):
-            lines.append("")
-            lines.append("## Prévisions de demande (horizon 30j)")
-            for fc in demand_forecast["forecasts"]:
-                lines.append(
-                    f"- {fc['itemCode']} — besoin total {fc['totalForecastQty']}, "
-                    f"stock {fc['currentStock']}, en transit {fc['inTransitQty']} "
-                    f"→ risque {fc['riskLevel']}"
-                )
-
-        # Réponse attendue
-        lines.extend([
-            "",
-            "## Réponse attendue (JSON)",
-            "```json",
-            "{",
-            '  "decision": "FULL_RELEASE | PARTIAL_RELEASE | DELAYED_RELEASE",',
-            '  "global_risk_score": <0-100>,',
-            '  "risk_level": "HIGH | MEDIUM | LOW",',
-            '  "recommended_start_slot": "<slotId ou null>",',
-            '  "reasoning": "<explication détaillée en français>",',
-            '  "risk_factors": [',
-            '    { "factor": "<nom>", "score": <0-100>, "detail": "<detail>" }',
-            '  ],',
-            '  "estimated_production_days": <number>,',
-            '  "sla_impact": "<description impact SLA>"',
-            "}",
-            "```",
-        ])
-
-        return "\n".join(lines)
-
-    # ── Extraction JSON ───────────────────────────────────────────────────
-
-    def _extract_json(self, response: str) -> str:
+    @staticmethod
+    def _extract_json(response):
         if "```json" in response:
-            start = response.index("```json") + 7
-            end = response.index("```", start)
-            return response[start:end].strip()
-        start = response.find("{")
-        if start >= 0:
-            end = response.rfind("}")
-            return response[start : end + 1]
-        raise Exception("Impossible d'extraire le JSON de la réponse IA")
+            s = response.index("```json") + 7
+            e = response.index("```", s)
+            return response[s:e].strip()
+        s = response.find("{")
+        if s >= 0:
+            e = response.rfind("}")
+            return response[s:e + 1]
+        raise ValueError("Could not extract JSON from AI response")
 
 
 # =============================================================================
-# Construction de l'output enrichi
+# LLM context builder
 # =============================================================================
 
-def build_output(
-    of: Dict,
-    decision: str,
-    missing_components: List[Dict],
-    cutoff_op: Optional[Dict],
-    last_doable_op: Optional[Dict],
-    ai_analysis: Optional[Dict] = None,
-) -> Dict:
-    """Construit l'output enrichi avec les données IA (si disponibles)."""
+def build_llm_context(of, components, operations, stock, missing_components,
+                      risk_steps, mvp_action, cutoff_op, last_doable_op,
+                      supplier_plan, days_until_due,
+                      historical_ofs, machine_calendar, sla_rules):
+    lines = [
+        "# Work-Order analysis context", "",
+        "## Work Order",
+        f"- ID: {of['id']}",
+        f"- Product: {of['productCode']}",
+        f"- Quantity: {of['quantity']}",
+        f"- Priority: {of.get('priority', 'N/A')}",
+        f"- Due date: {of.get('dueDate', 'N/A')}",
+        f"- Days until due: {days_until_due}",
+        "", "## BOM -- Components",
+    ]
+    for comp in components:
+        qty_needed = comp["qtyPerUnit"] * of["quantity"]
+        qty_avail = stock.get(comp["itemCode"], 0)
+        crit = "CRITICAL" if comp.get("isCritical") else "standard"
+        icon = "OK" if qty_avail >= qty_needed else "MISSING"
+        lines.append(f"- [{icon}] {comp['itemCode']} ({crit}) -- need {qty_needed}, available {qty_avail}")
+    lines += ["", "## Routing"]
+    missing_codes = {mc["itemCode"] for mc in missing_components}
+    for op in operations:
+        req = set(op.get("requiredComponents", []))
+        blocked = req & missing_codes
+        icon = "BLOCKED" if blocked else "OK"
+        cum_h = op.get("cumulative_start_hours", "?")
+        lines.append(f"- seq.{op['sequence']} {op['operationId']} -- starts at {cum_h}h -- {icon}")
+    if risk_steps:
+        lines += ["", "## Risk steps"]
+        for rs in risk_steps:
+            lines.append(f"- {rs['itemCode']} blocks {rs['operationId']} reached in {rs['time_to_reach_days']}d, shortage {rs['qtyShortage']}")
+    lines += ["", f"## MVP action: {mvp_action}"]
+    if cutoff_op:
+        lines.append(f"- Cutoff: {cutoff_op['operationId']} (seq.{cutoff_op['sequence']})")
+    if supplier_plan:
+        lines += ["", "## Supplier plan"]
+        for sp in supplier_plan:
+            lines.append(f"- {sp['itemCode']} -> {sp['supplier_name']}: {sp['order_qty']} pcs, lead {sp['estimated_lead_days']}d, ETA {sp['predicted_eta']}")
+    if historical_ofs and historical_ofs.get("records"):
+        lines += ["", "## History"]
+        for rec in historical_ofs["records"][-5:]:
+            late = f"{rec['daysLate']}d late" if rec["daysLate"] > 0 else "on-time"
+            lines.append(f"- {rec['of_id']} -- qty {rec['quantity']}, {late}")
+    if machine_calendar and machine_calendar.get("slots"):
+        lines += ["", "## Machine slots"]
+        for slot in machine_calendar["slots"]:
+            if slot["status"] == "available":
+                lines.append(f"- {slot['slotId']} -- {slot['date']} {slot['shift']} -- load {slot['currentLoad']*100:.0f}%")
+    if sla_rules and sla_rules.get("rules"):
+        lines += ["", "## SLA"]
+        for rule in sla_rules["rules"]:
+            lines.append(f"- {rule['client']} ({rule['serviceLevelAgreement']}): max {rule['maxAcceptableDelay_days']}d, penalty {rule['penaltyPerDayLate_eur']} eur/day")
+    return "\n".join(lines)
 
-    output: Dict[str, Any] = {
+
+# =============================================================================
+# Output builder
+# =============================================================================
+
+def build_output(of, missing_components, risk_steps, cutoff_op, last_doable_op,
+                 supplier_plan, simulated_emails, rescheduling_options,
+                 days_until_due, ai=None, mvp_action="LANCER_IMMEDIAT"):
+    """Builds the JSON output consumed by the Orchestrator and the Streamlit dashboards.
+
+    Schema matches _SIMULATED_MAESTRO / run_maestro() from data.py."""
+    now = datetime.now(timezone.utc)
+    action = (ai or {}).get("recommended_action", mvp_action)
+    risk_level_map = {"LANCER_IMMEDIAT": "VERT", "LANCER_DECALE": "ORANGE", "REPORTER_ET_REPLANIFIER": "ROUGE"}
+    risk_level = (ai or {}).get("risk_level", risk_level_map.get(action, "ORANGE"))
+    score = (ai or {}).get("global_risk_score",
+              0 if action == "LANCER_IMMEDIAT" else 55 if action == "LANCER_DECALE" else 92)
+    prob = (ai or {}).get("probabilite_blocage_pct",
+             0 if not missing_components else 30 if action == "LANCER_DECALE" else 95)
+    est_delay = (ai or {}).get("estimated_delay_days",
+                 0 if action != "REPORTER_ET_REPLANIFIER" else 10)
+    penalty = (ai or {}).get("estimated_penalty_eur", est_delay * 5000)
+    prod_days = (ai or {}).get("estimated_production_days", 5)
+
+    if ai and ai.get("etape_a_risque"):
+        etape = ai["etape_a_risque"]
+    elif risk_steps:
+        rs = risk_steps[0]
+        etape = {
+            "operationId": rs["operationId"], "sequence": rs["sequence"],
+            "description": rs["description"], "time_to_reach_days": rs["time_to_reach_days"],
+            "composant_manquant": rs["itemCode"],
+        }
+    else:
+        etape = None
+
+    launch_date = (ai or {}).get("recommended_launch_date")
+    launch_slot = (ai or {}).get("recommended_launch_slot")
+    maestro_msg = (ai or {}).get("maestro_message", _default_message(action, missing_components))
+    reasoning = (ai or {}).get("reasoning", "")
+    risk_factors = (ai or {}).get("risk_factors", [])
+    sla_impact = (ai or {}).get("sla_impact", "")
+
+    return {
         "of_id": of["id"],
         "orderNumber": of["orderNumber"],
         "productCode": of["productCode"],
         "quantity": of["quantity"],
-        "decision": decision,
+        "timestamp": now.isoformat(),
+        "risk_level": risk_level,
+        "global_risk_score": score,
+        "probabilite_blocage_pct": prob,
+        "etape_a_risque": etape,
+        "risk_steps": risk_steps,
+        "recommended_action": action,
+        "recommended_launch_date": launch_date,
+        "recommended_launch_slot": launch_slot,
+        "estimated_production_days": prod_days,
+        "days_until_due": days_until_due,
+        "estimated_delay_days": est_delay,
+        "estimated_penalty_eur": penalty,
+        "maestro_message": maestro_msg,
+        "reasoning": reasoning,
+        "risk_factors": risk_factors,
+        "sla_impact": sla_impact,
+        "supplier_order_plan": supplier_plan,
+        "simulated_emails": simulated_emails,
+        "rescheduling_options": rescheduling_options,
+        "missing_components": missing_components,
+        "cutoff_operation": {
+            "operationId": cutoff_op["operationId"],
+            "sequence": cutoff_op["sequence"],
+            "description": cutoff_op["description"],
+        } if cutoff_op else None,
+        "ai_enhanced": ai is not None,
+        "operator_decision": None,
         "previous_status": of.get("status", "Created"),
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "new_status": "AwaitingDecision",
     }
 
-    # Données IA
-    if ai_analysis:
-        output["ai_enhanced"] = True
-        output["global_risk_score"] = ai_analysis.get("global_risk_score", 0)
-        output["risk_level"] = ai_analysis.get("risk_level", "UNKNOWN")
-        output["risk_factors"] = ai_analysis.get("risk_factors", [])
-        output["recommended_start_slot"] = ai_analysis.get("recommended_start_slot")
-        output["estimated_production_days"] = ai_analysis.get("estimated_production_days")
-        output["sla_impact"] = ai_analysis.get("sla_impact", "")
-        output["ai_reasoning"] = ai_analysis.get("reasoning", "")
-    else:
-        output["ai_enhanced"] = False
 
-    # Statut et instruction selon la décision
-    if decision == "FULL_RELEASE":
-        output["new_status"] = "Released"
-        output["missing_components"] = []
-        output["instruction"] = (
-            "Production normale — tous les composants sont disponibles."
-        )
-
-    elif decision == "PARTIAL_RELEASE":
-        output["new_status"] = "PartiallyReleased"
-        output["missing_components"] = missing_components
-        if cutoff_op and last_doable_op:
-            output["cutoff_operation"] = {
-                "operationId": cutoff_op["operationId"],
-                "sequence": cutoff_op["sequence"],
-                "description": cutoff_op["description"],
-            }
-            output["resume_from_operation"] = {
-                "operationId": cutoff_op["operationId"],
-                "sequence": cutoff_op["sequence"],
-            }
-            shortage_parts = ", ".join(
-                f"{mc['itemCode']} (manque {mc['qtyShortage']})" for mc in missing_components
-            )
-            output["instruction"] = (
-                f"Produire jusqu'à {last_doable_op['operationId']} "
-                f"(séq. {last_doable_op['sequence']}) inclus, "
-                f"puis mettre de côté en attente de : {shortage_parts}"
-            )
-        else:
-            output["cutoff_operation"] = None
-            output["resume_from_operation"] = None
-            output["instruction"] = (
-                "Aucune opération réalisable — tous les composants manquent dès la première opération."
-            )
-
-    elif decision == "DELAYED_RELEASE":
-        output["new_status"] = "Delayed"
-        output["missing_components"] = missing_components
-        output["cutoff_operation"] = None
-        output["resume_from_operation"] = None
-        critical_missing = [mc for mc in missing_components if mc.get("isCritical")]
-        if critical_missing:
-            parts_str = ", ".join(mc["itemCode"] for mc in critical_missing)
-            output["instruction"] = (
-                f"OF mis en attente — composants critiques manquants : {parts_str}. "
-                f"Risque SLA trop élevé pour un lancement partiel."
-            )
-        else:
-            output["instruction"] = (
-                "OF mis en attente sur recommandation IA — conditions non réunies pour lancer."
-            )
-
-    return output
+def _default_message(action, missing):
+    if action == "LANCER_IMMEDIAT":
+        return "All components available. No blocking risk. Proceed as planned."
+    parts = ", ".join(mc["itemCode"] for mc in missing)
+    if action == "LANCER_DECALE":
+        return f"Missing parts ({parts}) but supplier ETA within reach. Delayed launch recommended."
+    return f"Critical shortage ({parts}). Rescheduling strongly recommended."
 
 
-def persist_output(output: Dict, output_path: str) -> None:
+# =============================================================================
+# Persistence & display
+# =============================================================================
+
+def persist_output(output, output_path):
     os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
     with open(output_path, "w", encoding="utf-8") as f:
         json.dump(output, f, indent=2, ensure_ascii=False)
-    print(f"   Output écrit dans : {output_path}")
+    print(f"   Output written to: {output_path}")
 
 
-def update_of_status(data_dir: str, of: Dict, new_status: str) -> None:
+def update_of_status(data_dir, of, new_status):
     of_path = os.path.join(data_dir, "of.json")
     of["status"] = new_status
     with open(of_path, "w", encoding="utf-8") as f:
         json.dump(of, f, indent=2, ensure_ascii=False)
-    print(f"   OF mis à jour : status → {new_status}")
+    print(f"   OF updated: status -> {new_status}")
 
 
-# =============================================================================
-# Affichage console enrichi
-# =============================================================================
-
-def print_summary(output: Dict) -> None:
-    decision = output["decision"]
+def print_summary(output):
+    action = output["recommended_action"]
     print()
     print("=" * 70)
-    print(f"  AGENT 1 IA — PLANIFICATION OF : {output['of_id']}")
+    print(f"  MAESTRO -- WORK-ORDER ANALYSIS: {output['of_id']}")
     print("=" * 70)
-
-    if output.get("ai_enhanced"):
-        score = output.get("global_risk_score", "?")
-        level = output.get("risk_level", "?")
-        print(f"  🤖 Analyse IA activée — Score de risque : {score}/100 ({level})")
-        if output.get("risk_factors"):
-            print("  Facteurs de risque :")
-            for rf in output["risk_factors"]:
-                print(f"    • {rf.get('factor', '?')} : {rf.get('score', '?')}/100 — {rf.get('detail', '')}")
-        if output.get("recommended_start_slot"):
-            print(f"  📅 Créneau recommandé : {output['recommended_start_slot']}")
-        if output.get("estimated_production_days"):
-            print(f"  ⏱️  Durée estimée : {output['estimated_production_days']} jours")
-        if output.get("sla_impact"):
-            print(f"  📊 Impact SLA : {output['sla_impact']}")
-        print()
-    else:
-        print("  ℹ️  Mode MVP (sans IA)")
-        print()
-
-    if decision == "FULL_RELEASE":
-        print(f"  ✅ Décision : {decision}")
-        print(f"  ➜  Nouveau statut OF : {output['new_status']}")
-        print(f"  ➜  {output['instruction']}")
-    elif decision == "PARTIAL_RELEASE":
-        print(f"  ⚠️  Décision : {decision}")
-        print(f"  ➜  Nouveau statut OF : {output['new_status']}")
-        print()
-        print("  Composants manquants :")
-        for mc in output.get("missing_components", []):
-            crit = " 🔴 CRITIQUE" if mc.get("isCritical") else ""
-            print(f"    • {mc['itemCode']}{crit} — besoin {mc['qtyNeeded']}, "
-                  f"dispo {mc['qtyAvailable']}, manque {mc['qtyShortage']}")
-        if output.get("cutoff_operation"):
-            co = output["cutoff_operation"]
-            print(f"\n  Opération de coupure : {co['operationId']} (séq. {co['sequence']})")
-        print(f"\n  📋 Consigne : {output['instruction']}")
-    elif decision == "DELAYED_RELEASE":
-        print(f"  🛑 Décision : {decision}")
-        print(f"  ➜  Nouveau statut OF : {output['new_status']}")
-        print()
-        print("  Composants manquants :")
-        for mc in output.get("missing_components", []):
-            crit = " 🔴 CRITIQUE" if mc.get("isCritical") else ""
-            print(f"    • {mc['itemCode']}{crit} — besoin {mc['qtyNeeded']}, "
-                  f"dispo {mc['qtyAvailable']}, manque {mc['qtyShortage']}")
-        print(f"\n  📋 Consigne : {output['instruction']}")
-
-    if output.get("ai_reasoning"):
-        print()
-        print("  💬 Explication IA :")
-        # Wrap long reasoning text
-        reasoning = output["ai_reasoning"]
-        for line in reasoning.split("\n"):
-            print(f"     {line}")
-
+    print(f"  Risk level  : {output['risk_level']} ({output['global_risk_score']}/100)")
+    print(f"  Action      : {action}")
+    if output.get("recommended_launch_date"):
+        print(f"  Launch slot : {output['recommended_launch_slot']} ({output['recommended_launch_date']})")
+    if output.get("estimated_delay_days"):
+        print(f"  Est. delay  : {output['estimated_delay_days']}d -- penalty {output['estimated_penalty_eur']} EUR")
+    if output.get("missing_components"):
+        print("  Missing parts:")
+        for mc in output["missing_components"]:
+            crit = " CRITICAL" if mc.get("isCritical") else ""
+            print(f"    - {mc['itemCode']}{crit} -- need {mc['qtyNeeded']}, have {mc['qtyAvailable']}")
+    if output.get("supplier_order_plan"):
+        print("  Supplier orders:")
+        for sp in output["supplier_order_plan"]:
+            print(f"    -> {sp['itemCode']} -> {sp['supplier_name']}, {sp['order_qty']} pcs, ETA {sp['predicted_eta']}")
+    if output.get("maestro_message"):
+        print(f"\n  Message: {output['maestro_message']}")
+    print(f"  Mode: {'AI-enhanced' if output.get('ai_enhanced') else 'Deterministic'}")
     print("=" * 70)
     print()
 
 
 # =============================================================================
-# Point d'entrée (async)
+# Main
 # =============================================================================
 
-async def async_main(data_dir: str, output_path: Optional[str]):
+async def async_main(data_dir, output_path):
     print()
-    print("🏭 Agent 1 IA — Planification intelligente OF")
+    print(">>> Maestro -- Intelligent work-order planner")
     print("-" * 50)
 
-    # ── Étape 1-3 : chargement des données ────────────────────────────────
-    print("[1/9] Chargement de l'OF...")
+    print("[1/8] Loading work order...")
     of = load_of(data_dir)
-    print(f"   Statut actuel : {of.get('status', 'N/A')}")
-    print(f"   Priorité : {of.get('priority', 'N/A')} — Échéance : {of.get('dueDate', 'N/A')}")
-
-    print("[2/9] Chargement de la BOM et de la gamme...")
+    print("[2/8] Loading BOM and routing...")
     components, operations = load_bom_and_routing(data_dir, of["productCode"])
-    for comp in components:
-        crit = " 🔴" if comp.get("isCritical") else ""
-        print(f"   • {comp['itemCode']}{crit} — {comp['qtyPerUnit']}/u × {of['quantity']} = {comp['qtyPerUnit'] * of['quantity']}")
-
-    print("[3/9] Chargement du stock...")
+    print("[3/8] Loading stock...")
     stock = load_stock(data_dir)
-    for code, qty in stock.items():
-        print(f"   • {code} : {qty}")
 
-    # ── Étape 4 : disponibilité ────────────────────────────────────────────
-    print("[4/9] Vérification de la disponibilité...")
+    print("[4/8] Checking component availability...")
     missing_components = check_availability(components, of["quantity"], stock)
+    risk_steps = find_risk_steps(operations, missing_components)
+    cutoff_op = find_cutoff_operation(operations, missing_components)
+    last_doable_op = find_last_doable_operation(operations, cutoff_op)
     for comp in components:
         qty_needed = comp["qtyPerUnit"] * of["quantity"]
         qty_avail = stock.get(comp["itemCode"], 0)
-        icon = "✅" if qty_avail >= qty_needed else "❌"
-        print(f"   {icon} {comp['itemCode']} : besoin {qty_needed}, dispo {qty_avail}")
+        icon = "[ok]" if qty_avail >= qty_needed else "[MISSING]"
+        print(f"   {icon} {comp['itemCode']}: need {qty_needed}, available {qty_avail}")
 
-    # ── Étape 5 : décision MVP ─────────────────────────────────────────────
-    print("[5/9] Décision MVP (déterministe)...")
-    mvp_decision = decide_mvp(missing_components)
-    print(f"   Décision MVP : {mvp_decision}")
-
-    # ── Étape 6 : coupure ──────────────────────────────────────────────────
-    cutoff_op = None
-    last_doable_op = None
-    if mvp_decision == "PARTIAL_RELEASE":
-        print("[6/9] Identification de l'opération de coupure...")
-        cutoff_op = find_cutoff_operation(operations, missing_components)
-        last_doable_op = find_last_doable_operation(operations, cutoff_op)
-        if cutoff_op:
-            print(f"   ➜ Coupure à : {cutoff_op['operationId']} (séq. {cutoff_op['sequence']})")
-    else:
-        print("[6/9] Pas de coupure (release complet)")
-
-    # ── Étape 7 : chargement données IA optionnelles ──────────────────────
-    print("[7/9] Chargement des données IA (optionnelles)...")
+    print("[5/8] Loading enrichment data...")
+    suppliers_data = load_optional_json(data_dir, "suppliers.json")
+    suppliers_list = suppliers_data.get("suppliers", []) if suppliers_data else []
     historical_ofs = load_optional_json(data_dir, "historical_ofs.json")
     machine_calendar = load_optional_json(data_dir, "machine_calendar.json")
     sla_rules = load_optional_json(data_dir, "sla_rules.json")
-    demand_forecast = load_optional_json(data_dir, "demand_forecast.json")
+    days_until_due = compute_days_until_due(of.get("dueDate", "2099-12-31T00:00:00Z"))
 
-    # ── Étape 8 : analyse IA ──────────────────────────────────────────────
-    ai_analysis = None
-    decision = mvp_decision  # fallback
+    print("[6/8] Deterministic decision...")
+    mvp_action = mvp_decide(missing_components, risk_steps, days_until_due, suppliers_list)
+    print(f"   MVP action: {mvp_action}")
 
-    project_endpoint = (
-        os.getenv("AZURE_AI_PROJECT_ENDPOINT")
-        or os.getenv("AI_FOUNDRY_PROJECT_ENDPOINT")
-    )
+    today = datetime.now(timezone.utc)
+    supplier_plan, simulated_emails = build_supplier_plan(
+        missing_components, suppliers_list, of["orderNumber"], today)
+    rescheduling_options = []
+    if mvp_action == "REPORTER_ET_REPLANIFIER":
+        rescheduling_options = build_rescheduling_options(
+            supplier_plan, machine_calendar, 5, of.get("dueDate", "2099-12-31T00:00:00Z"))
+
+    ai_result = None
+    project_endpoint = os.getenv("AZURE_AI_PROJECT_ENDPOINT") or os.getenv("AI_FOUNDRY_PROJECT_ENDPOINT")
     deployment_name = os.getenv("MODEL_DEPLOYMENT_NAME", "gpt-4.1")
 
     if project_endpoint:
-        print("[8/9] 🤖 Appel à l'agent IA...")
+        print("[7/8] Calling AI agent...")
         try:
-            agent = OFPlanningAgent(project_endpoint, deployment_name)
-            ai_analysis = await agent.analyze(
-                of=of,
-                components=components,
-                operations=operations,
-                stock=stock,
-                missing_components=missing_components,
-                mvp_decision=mvp_decision,
-                cutoff_op=cutoff_op,
-                last_doable_op=last_doable_op,
-                historical_ofs=historical_ofs,
-                machine_calendar=machine_calendar,
-                sla_rules=sla_rules,
-                demand_forecast=demand_forecast,
-            )
-            # L'IA peut changer la décision (ex : PARTIAL → DELAYED)
-            ai_decision = ai_analysis.get("decision", mvp_decision)
-            if ai_decision in ("FULL_RELEASE", "PARTIAL_RELEASE", "DELAYED_RELEASE"):
-                decision = ai_decision
-                print(f"   IA → décision : {decision}")
-            else:
-                print(f"   ⚠️  Décision IA invalide ({ai_decision}), on garde MVP : {mvp_decision}")
-            print(f"   IA → risque : {ai_analysis.get('global_risk_score', '?')}/100 "
-                  f"({ai_analysis.get('risk_level', '?')})")
+            context = build_llm_context(
+                of, components, operations, stock, missing_components,
+                risk_steps, mvp_action, cutoff_op, last_doable_op,
+                supplier_plan, days_until_due,
+                historical_ofs, machine_calendar, sla_rules)
+            agent = MaestroAgent(project_endpoint, deployment_name)
+            ai_result = await agent.analyze(context)
+            print(f"   AI -> action: {ai_result.get('recommended_action')}")
+            print(f"   AI -> risk: {ai_result.get('global_risk_score')}/100 ({ai_result.get('risk_level')})")
         except Exception as e:
-            print(f"   ⚠️  Erreur IA : {e}")
-            print(f"   Fallback → décision MVP : {mvp_decision}")
+            logger.exception("AI analysis failed")
+            print(f"   [warn] AI error: {e} -- falling back to deterministic mode")
     else:
-        print("[8/9] ℹ️  Azure AI non configuré — mode MVP uniquement")
+        print("[7/8] Azure AI not configured -- deterministic mode only")
 
-    # ── Étape 9 : output + persistance ─────────────────────────────────────
     output_file = output_path or os.path.join(data_dir, f"agent1_output_{of['id']}.json")
-
-    print("[9/9] Construction output & persistance...")
-    output = build_output(of, decision, missing_components, cutoff_op, last_doable_op, ai_analysis)
+    print("[8/8] Building output & persisting...")
+    output = build_output(
+        of=of, missing_components=missing_components, risk_steps=risk_steps,
+        cutoff_op=cutoff_op, last_doable_op=last_doable_op,
+        supplier_plan=supplier_plan, simulated_emails=simulated_emails,
+        rescheduling_options=rescheduling_options, days_until_due=days_until_due,
+        ai=ai_result, mvp_action=mvp_action)
     persist_output(output, output_file)
     update_of_status(data_dir, of, output["new_status"])
-
     print_summary(output)
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Agent 1 IA — Planification intelligente OF")
-    parser.add_argument(
-        "--data-dir",
-        default=os.path.join(os.path.dirname(__file__), "..", "data"),
-        help="Répertoire contenant les fichiers de données",
-    )
-    parser.add_argument("--output", default=None, help="Chemin du fichier output")
+    parser = argparse.ArgumentParser(description="Maestro -- Intelligent work-order planner")
+    parser.add_argument("--data-dir", default=os.path.join(os.path.dirname(__file__), "..", "data"))
+    parser.add_argument("--output", default=None)
     args = parser.parse_args()
-    data_dir = os.path.abspath(args.data_dir)
-    asyncio.run(async_main(data_dir, args.output))
+    asyncio.run(async_main(os.path.abspath(args.data_dir), args.output))
 
 
 if __name__ == "__main__":
